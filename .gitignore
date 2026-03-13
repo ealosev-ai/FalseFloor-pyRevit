@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Local tooling
+.mypy_cache/
+.pytest_cache/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary helper output
+*.tmp
+*.bak
+
+# Local generated help preview
+falsepol_help/
+
+# Revit backup family copies
+*.000*.rfa
