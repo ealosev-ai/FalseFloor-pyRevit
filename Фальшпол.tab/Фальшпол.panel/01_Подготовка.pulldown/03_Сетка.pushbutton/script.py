@@ -3,7 +3,7 @@
 from Autodesk.Revit.DB import ViewPlan  # type: ignore
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
-from floor_common import get_source_floor  # type: ignore
+from floor_common import FloorOrPartSelectionFilter, get_source_floor  # type: ignore
 from floor_grid import redraw_grid_for_floor  # type: ignore
 from floor_ui import TITLE_GRID  # type: ignore
 from pyrevit import forms, revit  # type: ignore
@@ -23,8 +23,11 @@ try:
         raise Exception("Active view is not a plan")
 
     # 2. Выбор перекрытия или части
+    pick_filter = FloorOrPartSelectionFilter()
     ref = uidoc.Selection.PickObject(
-        ObjectType.Element, "Выберите перекрытие фальшпола или его часть"
+        ObjectType.Element,
+        pick_filter,
+        "Выберите перекрытие фальшпола или его часть",
     )
 
     picked_el = doc.GetElement(ref.ElementId)

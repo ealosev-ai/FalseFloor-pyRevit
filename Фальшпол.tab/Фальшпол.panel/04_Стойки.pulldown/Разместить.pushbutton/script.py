@@ -26,6 +26,7 @@ from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
+    build_support_nodes,
     get_double_param,
     get_source_floor,
     get_string_param,
@@ -140,59 +141,13 @@ def _get_lower_axis_and_angle(lower_segs):
 
 
 def _generate_support_nodes(lower_segs, max_spacing, support_half=0.0):
-    """Генерация узлов стоек вдоль каждого нижнего лонжерона.
-
-    Для каждого сегмента:
-      - На стыках (конец совпадает с концом другого лонжерона) — стойка по центру.
-      - На свободных концах (у стены) — стойка сдвинута внутрь на support_half,
-        чтобы край опоры совпадал с краем лонжерона.
-      - Промежуточные: равномерно, шаг <= max_spacing.
-    Результат дедуплицирован.
-    """
-    # 1. Подсчёт сколько раз встречается каждая конечная точка
-    endpoint_count = {}
-    for x1, y1, x2, y2 in lower_segs:
-        p_start = (_rc(x1), _rc(y1))
-        p_end = (_rc(x2), _rc(y2))
-        endpoint_count[p_start] = endpoint_count.get(p_start, 0) + 1
-        endpoint_count[p_end] = endpoint_count.get(p_end, 0) + 1
-
-    support_set = set()
-    for x1, y1, x2, y2 in lower_segs:
-        length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        if length < COORD_TOL:
-            continue
-        dx = (x2 - x1) / length
-        dy = (y2 - y1) / length
-
-        p_start = (_rc(x1), _rc(y1))
-        p_end = (_rc(x2), _rc(y2))
-
-        # Концы: стык (count>1) → по центру, свободный → сдвиг внутрь
-        if endpoint_count.get(p_start, 1) > 1 or support_half < COORD_TOL:
-            support_set.add(p_start)
-        else:
-            sx = x1 + dx * support_half
-            sy = y1 + dy * support_half
-            support_set.add((_rc(sx), _rc(sy)))
-
-        if endpoint_count.get(p_end, 1) > 1 or support_half < COORD_TOL:
-            support_set.add(p_end)
-        else:
-            sx = x2 - dx * support_half
-            sy = y2 - dy * support_half
-            support_set.add((_rc(sx), _rc(sy)))
-
-        # Промежуточные
-        if length > max_spacing + COORD_TOL:
-            n_spans = int(math.ceil(length / max_spacing))
-            for i in range(1, n_spans):
-                t = float(i) / n_spans
-                px = x1 + t * (x2 - x1)
-                py = y1 + t * (y2 - y1)
-                support_set.add((_rc(px), _rc(py)))
-
-    return sorted(support_set)
+    """Генерация узлов стоек вдоль нижних лонжеронов (shared logic)."""
+    return build_support_nodes(
+        lower_segs,
+        max_spacing,
+        support_half=support_half,
+        tol=COORD_TOL,
+    )
 
 
 try:

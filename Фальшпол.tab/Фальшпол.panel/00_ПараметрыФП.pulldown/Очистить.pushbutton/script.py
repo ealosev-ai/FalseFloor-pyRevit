@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Очистить FP_-параметры — удаляет все FP_-параметры.
+"""Вычистить FP_ — удаляет все FP_-параметры из текущего документа.
 
 В редакторе семейства: удаляет FP_-параметры из текущего семейства.
 В проекте: удаляет FP_-привязки из проекта через Revit API.
@@ -13,7 +13,32 @@ from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 app = doc.Application
-TITLE = "Очистить FP_-параметры"
+TITLE = "Вычистить FP_ (ОПАСНО)"
+CONFIRM_PHRASE = "УДАЛИТЬ FP"
+
+
+def _confirm_hard_delete(scope_label, count, names):
+    preview = "\n".join(names[:40])
+    if len(names) > 40:
+        preview += "\n... (+{} ещё)".format(len(names) - 40)
+
+    msg = (
+        "Найдено FP_-параметров {}: {}\n\n{}\n\n"
+        "Это удалит все FP_-параметры из {}.\n"
+        "Операция потенциально ломает старые спецификации/фильтры/скрипты.\n\n"
+        "Продолжить?"
+    ).format(scope_label, count, preview, scope_label)
+
+    confirm = forms.alert(msg, title=TITLE, yes=True, no=True)
+    if not confirm:
+        return False
+
+    typed = forms.ask_for_string(
+        prompt="Для подтверждения введи: {}".format(CONFIRM_PHRASE),
+        default="",
+        title=TITLE,
+    )
+    return (typed or "").strip() == CONFIRM_PHRASE
 
 
 def _clean_family():
@@ -30,15 +55,8 @@ def _clean_family():
         return
 
     names = sorted([p.Definition.Name for p in fp_params])
-    confirm = forms.alert(
-        "Найдено FP_-параметров: {}\n\n{}\n\nУдалить все?".format(
-            len(fp_params), "\n".join(names)
-        ),
-        title=TITLE,
-        yes=True,
-        no=True,
-    )
-    if not confirm:
+    if not _confirm_hard_delete("в семействе", len(fp_params), names):
+        forms.alert("Отмена очистки.", title=TITLE)
         return
 
     removed = []
@@ -85,15 +103,8 @@ def _clean_project():
         return
 
     names = sorted([d.Name for d in fp_defs])
-    confirm = forms.alert(
-        "Найдено FP_-параметров в проекте: {}\n\n{}\n\nУдалить все?".format(
-            len(fp_defs), "\n".join(names)
-        ),
-        title=TITLE,
-        yes=True,
-        no=True,
-    )
-    if not confirm:
+    if not _confirm_hard_delete("в проекте", len(fp_defs), names):
+        forms.alert("Отмена очистки.", title=TITLE)
         return
 
     removed = []

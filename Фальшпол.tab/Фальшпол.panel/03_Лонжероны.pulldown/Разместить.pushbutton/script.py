@@ -27,10 +27,15 @@ from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
+    cut_at_positions_1d,
+    cut_equal_1d,
     get_double_param,
+    get_mm_param,
     get_source_floor,
     get_string_param,
+    normalize_legacy_mm_param,
     parse_ids_from_string,
+    set_mm_param,
     set_string_param,
 )
 from floor_exact import (  # type: ignore
@@ -157,43 +162,12 @@ def _read_grid_lines(floor_el):
 
 def _cut_at_positions(start, end, max_len, positions):
     """Режет [start,end] ≤ max_len, стыки в positions (greedy)."""
-    if end - start <= max_len + TOL:
-        return [(start, end)]
-    cands = sorted(p for p in positions if start + TOL < p < end - TOL)
-    if not cands:
-        return _cut_equal(start, end, max_len)
-    segs = []
-    cur = start
-    while end - cur > max_len + TOL:
-        best = None
-        for p in cands:
-            if p <= cur + TOL:
-                continue
-            if p - cur > max_len + TOL:
-                break
-            best = p
-        if best is None:
-            segs.extend(_cut_equal(cur, end, max_len))
-            return segs
-        segs.append((cur, best))
-        cur = best
-    segs.append((cur, end))
-    return segs
+    return cut_at_positions_1d(start, end, max_len, positions, tol=TOL)
 
 
 def _cut_equal(start, end, max_len):
     """Равномерная нарезка ≤ max_len."""
-    total = end - start
-    if total <= max_len + TOL:
-        return [(start, end)]
-    n = int(math.ceil(total / max_len))
-    step = total / n
-    segs = []
-    for i in range(n):
-        a = start + step * i
-        b = start + step * (i + 1) if i < n - 1 else end
-        segs.append((a, b))
-    return segs
+    return cut_equal_1d(start, end, max_len, tol=TOL)
 
 
 def _cut_seg(seg, max_len, positions=None):
@@ -426,7 +400,12 @@ def _ask_config(floor):
             raise _Cancel()
         sym_lower = sym_dict[n]
 
-    s = forms.ask_for_string(prompt="Макс. длина (мм):", default="4000", title=TITLE)
+    max_len_default = int(round(get_mm_param(floor, "FP_Макс_Длина_Лонжерона", 4000.0)))
+    s = forms.ask_for_string(
+        prompt="Макс. длина (мм):",
+        default=str(max_len_default),
+        title=TITLE,
+    )
     if not s:
         raise _Cancel()
     try:
@@ -435,7 +414,12 @@ def _ask_config(floor):
         forms.alert("Некорректное число.", title=TITLE)
         raise _Cancel()
 
-    s = forms.ask_for_string(prompt="Шаг нижних (мм):", default="1200", title=TITLE)
+    lower_step_default = int(round(get_mm_param(floor, "FP_Шаг_Нижних", 1200.0)))
+    s = forms.ask_for_string(
+        prompt="Шаг нижних (мм):",
+        default=str(lower_step_default),
+        title=TITLE,
+    )
     if not s:
         raise _Cancel()
     try:
@@ -479,6 +463,11 @@ def _place_layer(segs, symbol, level, z0, dz, prefix, dir_label, max_len):
 
 def main():
     floor = _pick_floor()
+
+    with revit.Transaction("Нормализовать размеры лонжеронов"):
+        normalize_legacy_mm_param(floor, "FP_Шаг_Нижних")
+        normalize_legacy_mm_param(floor, "FP_Макс_Длина_Лонжерона")
+
     dir_x, sym_upper, sym_lower, max_len, lower_step = _ask_config(floor)
 
     missing = [n for n in REQUIRED_FLOOR_PARAMS if floor.LookupParameter(n) is None]
@@ -763,16 +752,8 @@ def main():
         set_string_param(floor, "FP_ID_Лонжеронов_Верх", ";".join(upper_ids))
         set_string_param(floor, "FP_ID_Лонжеронов_Низ", ";".join(lower_ids))
         _set_param(floor, "FP_Режим_Нижних", "Регулярные")
-        _set_param(
-            floor,
-            "FP_Шаг_Нижних",
-            str(int(round(internal_to_mm(lower_step)))),
-        )
-        _set_param(
-            floor,
-            "FP_Макс_Длина_Лонжерона",
-            str(int(round(internal_to_mm(max_len)))),
-        )
+        set_mm_param(floor, "FP_Шаг_Нижних", internal_to_mm(lower_step))
+        set_mm_param(floor, "FP_Макс_Длина_Лонжерона", internal_to_mm(max_len))
         _set_param(floor, "FP_Направление_Верхних", "X" if dir_x else "Y")
 
     forms.alert(

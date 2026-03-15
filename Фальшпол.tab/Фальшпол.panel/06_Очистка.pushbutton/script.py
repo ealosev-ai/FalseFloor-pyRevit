@@ -8,6 +8,7 @@ from floor_common import (  # type: ignore
     get_source_floor,
     get_string_param,
     parse_ids_from_string,
+    read_reinforcement_zone_ids,
     set_string_param,
 )
 from pyrevit import forms, revit  # type: ignore
@@ -30,6 +31,7 @@ _PARAM_MAP = [
     ("FP_ID_ЛинийКонтура", "Линии контура"),
 ]
 
+_PARAM_ZONES = "FP_ЗоныУсиления_JSON"
 try:
     if not isinstance(view, ViewPlan):
         forms.alert("Открой план.", title=TITLE)
@@ -52,6 +54,11 @@ try:
         if ids:
             groups.append((param_name, label, ids))
             total += len(ids)
+
+    zone_ids = list(set(read_reinforcement_zone_ids(floor)))
+    if zone_ids:
+        groups.append((_PARAM_ZONES, "Лонжероны усиления", zone_ids))
+        total += len(zone_ids)
 
     if total == 0:
         forms.alert("Элементы фальшпола не найдены.", title=TITLE)
@@ -82,7 +89,10 @@ try:
                         deleted += 1
                 except Exception:
                     pass
-            set_string_param(floor, param_name, "")
+            if param_name != _PARAM_ZONES:
+                set_string_param(floor, param_name, "")
+
+        set_string_param(floor, _PARAM_ZONES, "")
 
     forms.alert("Удалено: {} из {}".format(deleted, total), title=TITLE)
 

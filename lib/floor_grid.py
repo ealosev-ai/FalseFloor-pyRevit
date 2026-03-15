@@ -5,6 +5,7 @@ from Autodesk.Revit.DB import (  # type: ignore
     Color,
     CurveElement,
     ElementId,
+    Family,
     FilteredElementCollector,
     Line,
 )
@@ -22,7 +23,7 @@ from pyrevit import revit  # type: ignore
 doc = revit.doc
 
 GRID_LINE_STYLE_NAME = "ФП_Сетка"
-GRID_COLOR = Color(230, 160, 160)
+GRID_COLOR = Color(100, 149, 237)  # васильковый синий
 GRID_LINE_PATTERN = "Center"
 
 BASE_MARKER_STYLE_NAME = "ФП_База"
@@ -30,6 +31,30 @@ BASE_MARKER_COLOR = Color(0, 100, 255)
 
 CONTOUR_STYLE_NAME = "ФП_Контур"
 CONTOUR_COLOR = Color(0, 255, 0)
+
+NEAR_COLUMN_STYLE_NAME = "ФП_СеткаКолонна"
+NEAR_COLUMN_COLOR = Color(255, 80, 80)  # красный — внимание
+
+# Минимальный порог, если лонжерон не найден (мм)
+_DEFAULT_COL_CLEARANCE_MM = 30.0
+
+
+def _get_longeron_clearance_mm():
+    """Читает макс. ширину профиля лонжерона (мм) для near-edge подсветки."""
+    clearance = 0.0
+    for fam in FilteredElementCollector(doc).OfClass(Family):
+        if fam.Name == "ФП_Лонжерон":
+            for sid in fam.GetFamilySymbolIds():
+                sym = doc.GetElement(sid)
+                if sym:
+                    pw = get_double_param(sym, "FP_Ширина_Профиля")
+                    if pw:
+                        pw_mm = pw * _INTERNAL_TO_MM
+                        if pw_mm > clearance:
+                            clearance = pw_mm
+            break
+    return clearance if clearance > 0 else _DEFAULT_COL_CLEARANCE_MM
+
 
 # Минимальная длина отрезка (в футах) — короче не рисуем
 _MIN_SEG_LEN = 0.005  # ~1.5 мм
@@ -56,35 +81,44 @@ def _clipper_to_internal(val):
 
 
 def _build_clip_paths(floor):
-    """Строит clip-контур из exact_zone (outer − holes).
+    """Builds clip-paths from exact zone and returns (clip_paths, hole_edge_coords).
 
-    Возвращает Paths64 для clip или None, если контур не построен.
+    hole_edge_coords: list of (min_x, min_y, max_x, max_y) in internal units per hole,
+    or empty list if no holes.
     """
     try:
         from floor_exact import (
             Difference,
             FillRule,
+            clipper_to_mm,
             get_exact_zone_for_floor,
+            mm_to_internal,
         )
     except Exception:
-        return None
+        return None, []
 
     try:
         zone = get_exact_zone_for_floor(doc, floor)
     except Exception:
-        return None
+        return None, []
 
     outer = zone.get("outer_paths")
     holes = zone.get("hole_paths")
     if not outer or outer.Count == 0:
-        return None
+        return None, []
 
+    hole_edge_coords = []
     if holes and holes.Count > 0:
+        for hp in holes:
+            hxs = [mm_to_internal(clipper_to_mm(pt.X)) for pt in hp]
+            hys = [mm_to_internal(clipper_to_mm(pt.Y)) for pt in hp]
+            if hxs and hys:
+                hole_edge_coords.append((min(hxs), min(hys), max(hxs), max(hys)))
         clip = Difference(outer, holes, FillRule.NonZero)
     else:
         clip = outer
 
-    return clip
+    return clip, hole_edge_coords
 
 
 def _clip_line_segments(x0, y0, x1, y1, clip_paths):
@@ -273,6 +307,10 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
     old_marker_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_МаркераБазы"))
     style_id = get_line_style_id(doc, GRID_LINE_STYLE_NAME)
     styled_ids = _collect_styled_curve_ids(view, style_id) if style_id else []
+    near_col_style_id = get_line_style_id(doc, NEAR_COLUMN_STYLE_NAME)
+    near_col_styled_ids = (
+        _collect_styled_curve_ids(view, near_col_style_id) if near_col_style_id else []
+    )
     marker_style_id = get_line_style_id(doc, BASE_MARKER_STYLE_NAME)
     marker_styled_ids = (
         _collect_styled_curve_ids(view, marker_style_id) if marker_style_id else []
@@ -280,7 +318,9 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
 
     ids_to_delete = []
     seen_ids = set()
-    for int_id in old_ids + styled_ids + old_marker_ids + marker_styled_ids:
+    for int_id in (
+        old_ids + styled_ids + near_col_styled_ids + old_marker_ids + marker_styled_ids
+    ):
         if int_id in seen_ids:
             continue
         seen_ids.add(int_id)
@@ -309,9 +349,42 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
                 pass
 
         # Подрезка по контуру через Clipper2 (если контур построен)
-        clip_paths = _build_clip_paths(floor)
+        clip_paths, hole_edge_coords = _build_clip_paths(floor)
+
+        # Стиль для линий у колонн (если есть колонны)
+        near_col_style = None
+        if hole_edge_coords:
+            near_col_style = get_or_create_line_style(
+                doc,
+                NEAR_COLUMN_STYLE_NAME,
+                NEAR_COLUMN_COLOR,
+                line_pattern_name=GRID_LINE_PATTERN,
+                update_existing=update_style,
+            )
+
+        # Проверка: линия сетки рядом с ребром колонны?
+        _col_clearance = _get_longeron_clearance_mm() / _INTERNAL_TO_MM  # мм → feet
+
+        def _is_near_column_x(x_val):
+            for hmin_x, _hmin_y, hmax_x, _hmax_y in hole_edge_coords:
+                if (
+                    abs(x_val - hmin_x) < _col_clearance
+                    or abs(x_val - hmax_x) < _col_clearance
+                ):
+                    return True
+            return False
+
+        def _is_near_column_y(y_val):
+            for _hmin_x, hmin_y, _hmax_x, hmax_y in hole_edge_coords:
+                if (
+                    abs(y_val - hmin_y) < _col_clearance
+                    or abs(y_val - hmax_y) < _col_clearance
+                ):
+                    return True
+            return False
 
         for x in x_positions:
+            is_near = near_col_style and _is_near_column_x(x)
             if clip_paths:
                 segs = _clip_line_segments(x, min_y, x, max_y, clip_paths)
             else:
@@ -319,10 +392,11 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
             for (ax, ay), (bx, by) in segs:
                 line = Line.CreateBound(XYZ(ax, ay, z0), XYZ(bx, by, z0))
                 dc = doc.Create.NewDetailCurve(view, line)
-                dc.LineStyle = grid_style
+                dc.LineStyle = near_col_style if is_near else grid_style
                 created_ids.append(str(dc.Id.Value))
 
         for y in y_positions:
+            is_near = near_col_style and _is_near_column_y(y)
             if clip_paths:
                 segs = _clip_line_segments(min_x, y, max_x, y, clip_paths)
             else:
@@ -330,7 +404,7 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
             for (ax, ay), (bx, by) in segs:
                 line = Line.CreateBound(XYZ(ax, ay, z0), XYZ(bx, by, z0))
                 dc = doc.Create.NewDetailCurve(view, line)
-                dc.LineStyle = grid_style
+                dc.LineStyle = near_col_style if is_near else grid_style
                 created_ids.append(str(dc.Id.Value))
 
         # Крестик точки начала раскладки (только если база в зоне bbox)

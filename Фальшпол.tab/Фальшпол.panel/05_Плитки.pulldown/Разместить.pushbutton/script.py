@@ -24,7 +24,7 @@ from floor_common import (  # type: ignore
 )
 from floor_exact import (  # type: ignore
     analyze_cell_exact,
-    compute_single_void,
+    compute_voids,
     get_exact_zone_for_floor,
     internal_to_mm,
     make_rect_path64,
@@ -49,8 +49,12 @@ _REQUIRED_PARAMS = [
     "FP_Подрезка_Y",
     "FP_Марка",
 ]
-_VOID_PARAMS = ("FP_Вырез_X", "FP_Вырез_Y", "FP_Вырез_Смещ_X", "FP_Вырез_Смещ_Y")
-_VOID_MIN = mm_to_internal(1.0)  # void скрыт формулой FP_Вырез_X > 1мм
+_VOID_PARAMS = (
+    ("FP_Вырез_X", "FP_Вырез_Y", "FP_Вырез_Смещ_X", "FP_Вырез_Смещ_Y"),
+    ("FP_Вырез2_X", "FP_Вырез2_Y", "FP_Вырез2_Смещ_X", "FP_Вырез2_Смещ_Y"),
+    ("FP_Вырез3_X", "FP_Вырез3_Y", "FP_Вырез3_Смещ_X", "FP_Вырез3_Смещ_Y"),
+)
+_VOID_MIN = mm_to_internal(1.0)  # void скрыт формулой FP_Вырез*_X ≤ 1мм
 
 
 def _find_family_symbol(family_name):
@@ -412,14 +416,15 @@ try:
                     _set_instance_param(instance, "FP_Тип_Плитки", "Полная")
                     _set_instance_param(instance, "FP_Подрезка_X", 0.0)
                     _set_instance_param(instance, "FP_Подрезка_Y", 0.0)
-                    # Void скрыт формулой (FP_Вырез_X = 1мм ≤ 1мм)
-                    _set_instance_param(instance, _VOID_PARAMS[0], _VOID_MIN)
-                    _set_instance_param(instance, _VOID_PARAMS[1], _VOID_MIN)
-                    _set_instance_param(instance, _VOID_PARAMS[2], 0.0)
-                    _set_instance_param(instance, _VOID_PARAMS[3], 0.0)
+                    # Void скрыт формулой (FP_Вырез*_X ≤ 1мм)
+                    for vp in _VOID_PARAMS:
+                        _set_instance_param(instance, vp[0], _VOID_MIN)
+                        _set_instance_param(instance, vp[1], _VOID_MIN)
+                        _set_instance_param(instance, vp[2], 0.0)
+                        _set_instance_param(instance, vp[3], 0.0)
                     full_count += 1
-                else:
-                    # Подрезка (простая или сложная) — вырез = ячейка − полигон
+                elif result["is_simple_cut"] or result["is_complex_cut"]:
+                    # Любая подрезка — FP_Подрезка + вырезы работают вместе
                     step_x_mm = internal_to_mm(step_x)
                     step_y_mm = internal_to_mm(step_y)
                     cut_x = result["size_x_mm"]
@@ -434,48 +439,42 @@ try:
                     _set_instance_param(instance, "FP_Подрезка_X", px)
                     _set_instance_param(instance, "FP_Подрезка_Y", py)
 
-                    # Void = cell − clipped (единая логика для всех подрезок)
+                    # Voids = cell − clipped (до 3 вырезов)
                     clipped = result.get("clipped_paths")
-                    has_void = False
+                    num_voids = 0
                     if clipped:
-                        void_data = compute_single_void(rect_bbox_mm, clipped)
-                        if void_data and void_data["has_void"]:
-                            vw, vh, vox, voy = void_data["void"]
-                            _set_instance_param(
-                                instance,
-                                _VOID_PARAMS[0],
-                                mm_to_internal(vw),
-                            )
-                            _set_instance_param(
-                                instance,
-                                _VOID_PARAMS[1],
-                                mm_to_internal(vh),
-                            )
-                            _set_instance_param(
-                                instance,
-                                _VOID_PARAMS[2],
-                                mm_to_internal(vox),
-                            )
-                            _set_instance_param(
-                                instance,
-                                _VOID_PARAMS[3],
-                                mm_to_internal(voy),
-                            )
-                            has_void = True
-                            if void_data["has_unhandled_voids"]:
-                                cut_complex_unhandled += 1
-
-                    if not has_void:
-                        _set_instance_param(instance, _VOID_PARAMS[0], _VOID_MIN)
-                        _set_instance_param(instance, _VOID_PARAMS[1], _VOID_MIN)
-                        _set_instance_param(instance, _VOID_PARAMS[2], 0.0)
-                        _set_instance_param(instance, _VOID_PARAMS[3], 0.0)
+                        vdata = compute_voids(rect_bbox_mm, clipped)
+                        for vi, vp in enumerate(_VOID_PARAMS):
+                            if vi < len(vdata["voids"]):
+                                vw, vh, vox, voy = vdata["voids"][vi]
+                                _set_instance_param(instance, vp[0], mm_to_internal(vw))
+                                _set_instance_param(instance, vp[1], mm_to_internal(vh))
+                                _set_instance_param(
+                                    instance, vp[2], mm_to_internal(vox)
+                                )
+                                _set_instance_param(
+                                    instance, vp[3], mm_to_internal(voy)
+                                )
+                                num_voids += 1
+                            else:
+                                _set_instance_param(instance, vp[0], _VOID_MIN)
+                                _set_instance_param(instance, vp[1], _VOID_MIN)
+                                _set_instance_param(instance, vp[2], 0.0)
+                                _set_instance_param(instance, vp[3], 0.0)
+                        if vdata["has_unhandled_voids"]:
+                            cut_complex_unhandled += 1
+                    else:
+                        for vp in _VOID_PARAMS:
+                            _set_instance_param(instance, vp[0], _VOID_MIN)
+                            _set_instance_param(instance, vp[1], _VOID_MIN)
+                            _set_instance_param(instance, vp[2], 0.0)
+                            _set_instance_param(instance, vp[3], 0.0)
 
                     if result["is_simple_cut"]:
                         cut_simple_count += 1
                     else:
                         cut_complex_count += 1
-                        if has_void:
+                        if num_voids > 0:
                             cut_complex_with_voids += 1
 
                 placed_ids.append(str(instance.Id.Value))
@@ -528,8 +527,10 @@ try:
             )
         if placed_ids:
             _chk = doc.GetElement(ElementId(int(placed_ids[0])))
-            if _chk and not _chk.LookupParameter(_VOID_PARAMS[0]):
-                done_lines.append("  \u26a0 В семействе нет FP_Вырез_X/Y!")
+            if _chk:
+                for _vi, _vp in enumerate(_VOID_PARAMS):
+                    if not _chk.LookupParameter(_vp[0]):
+                        done_lines.append("  \u26a0 В семействе нет {}!".format(_vp[0]))
     done_lines.extend(
         [
             "",

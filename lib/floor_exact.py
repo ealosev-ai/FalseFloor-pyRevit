@@ -36,8 +36,10 @@ DEFAULT_REFINE_RADIUS_MM = 60.0
 DEFAULT_REFINE_TOP_N = 3
 DEFAULT_TOP_N = 10
 
-# Округление итогового смещения до практичного шага (мм)
-SHIFT_ROUND_MM = 10.0
+# Целевая кратность подрезок по краям (мм).
+# При равных основных метриках предпочитается вариант,
+# размеры подрезок которого ближе к кратным CUT_ROUND_MM.
+CUT_ROUND_MM = 5.0
 
 # Параметры сканирования min-width для complex cuts
 _SCAN_SAMPLES = 40
@@ -735,6 +737,148 @@ def compute_single_void(cell_bbox_mm, clipped_paths):
     }
 
 
+def _point_in_polygon_mm(px, py, polygon_pts):
+    """Ray-casting point-in-polygon test (мм координаты)."""
+    n = len(polygon_pts)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon_pts[i]
+        xj, yj = polygon_pts[j]
+        if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _decompose_void_to_rects(void_pts, cell_bbox_mm):
+    """Разложить void-полигон на ортогональные прямоугольники.
+
+    Строит сетку из уникальных X/Y координат вершин полигона,
+    проверяет центр каждой ячейки на попадание внутрь полигона.
+    Возвращает список (x0, y0, x1, y1) прямоугольников в мм.
+    """
+    c_x0, c_y0, c_x1, c_y1 = cell_bbox_mm
+
+    # Собираем уникальные координаты из вершин + границы ячейки
+    xs = sorted(set([round(p[0], 1) for p in void_pts] + [c_x0, c_x1]))
+    ys = sorted(set([round(p[1], 1) for p in void_pts] + [c_y0, c_y1]))
+
+    # Оставляем только координаты внутри bbox void-а
+    vxs = [p[0] for p in void_pts]
+    vys = [p[1] for p in void_pts]
+    v_min_x, v_max_x = min(vxs), max(vxs)
+    v_min_y, v_max_y = min(vys), max(vys)
+
+    xs = [x for x in xs if v_min_x - 0.5 <= x <= v_max_x + 0.5]
+    ys = [y for y in ys if v_min_y - 0.5 <= y <= v_max_y + 0.5]
+
+    rects = []
+    for i in range(len(xs) - 1):
+        for j in range(len(ys) - 1):
+            rx0, rx1 = xs[i], xs[i + 1]
+            ry0, ry1 = ys[j], ys[j + 1]
+            if rx1 - rx0 < 0.5 or ry1 - ry0 < 0.5:
+                continue
+            # Проверяем центр подъячейки
+            cx = (rx0 + rx1) / 2.0
+            cy = (ry0 + ry1) / 2.0
+            if _point_in_polygon_mm(cx, cy, void_pts):
+                rects.append((rx0, ry0, rx1, ry1))
+
+    # Мержим смежные прямоугольники по горизонтали (одинаковый Y-диапазон)
+    merged = []
+    used = [False] * len(rects)
+    for i, (ax0, ay0, ax1, ay1) in enumerate(rects):
+        if used[i]:
+            continue
+        cur_x0, cur_y0, cur_x1, cur_y1 = ax0, ay0, ax1, ay1
+        changed = True
+        while changed:
+            changed = False
+            for k in range(len(rects)):
+                if used[k]:
+                    continue
+                bx0, by0, bx1, by1 = rects[k]
+                # Тот же Y-диапазон и примыкают по X
+                if (
+                    abs(by0 - cur_y0) < 0.5
+                    and abs(by1 - cur_y1) < 0.5
+                    and (abs(bx0 - cur_x1) < 0.5 or abs(bx1 - cur_x0) < 0.5)
+                ):
+                    cur_x0 = min(cur_x0, bx0)
+                    cur_x1 = max(cur_x1, bx1)
+                    used[k] = True
+                    changed = True
+        used[i] = True
+        merged.append((cur_x0, cur_y0, cur_x1, cur_y1))
+
+    return merged if merged else rects
+
+
+def compute_voids(cell_bbox_mm, clipped_paths, max_voids=3):
+    """Вычислить до max_voids вырезов = ячейка − обрезанный полигон.
+
+    Разница cell_rect − clipped даёт области, которые нужно удалить.
+    Непрямоугольные void-полигоны (L, T, U) раскладываются на
+    отдельные прямоугольники через сетку вершин.
+    Смещения считаются от левого/нижнего края ячейки.
+
+    Args:
+        cell_bbox_mm: (x0, y0, x1, y1) ячейки сетки в мм.
+        clipped_paths: Paths64 — полигон(ы) обрезанной плитки.
+        max_voids: максимальное количество вырезов (по умолчанию 3).
+
+    Returns:
+        dict с ключами:
+            voids — list of (w_mm, h_mm, margin_x_mm, margin_y_mm), до max_voids шт.
+            has_unhandled_voids — bool (найдено больше max_voids областей)
+    """
+    c_x0, c_y0, c_x1, c_y1 = cell_bbox_mm
+
+    cell_rect = make_rect_path64(c_x0, c_y0, c_x1, c_y1)
+    cell_paths = Paths64()
+    cell_paths.Add(cell_rect)
+
+    diff = Difference(cell_paths, clipped_paths, FillRule.NonZero)
+
+    if diff.Count == 0:
+        return {"voids": [], "has_unhandled_voids": False}
+
+    items = []
+    for void_path in diff:
+        pts = path64_to_points_mm(void_path)
+        if not pts:
+            continue
+
+        # Прямоугольный void — берём как есть
+        if len(pts) == 4 and is_single_axis_rect(void_path):
+            vxs = [p[0] for p in pts]
+            vys = [p[1] for p in pts]
+            sub_rects = [(min(vxs), min(vys), max(vxs), max(vys))]
+        else:
+            # Непрямоугольный (L, T, U) — раскладываем на прямоугольники
+            sub_rects = _decompose_void_to_rects(pts, cell_bbox_mm)
+
+        for r_x0, r_y0, r_x1, r_y1 in sub_rects:
+            w_mm = normalize_mm(r_x1 - r_x0)
+            h_mm = normalize_mm(r_y1 - r_y0)
+            if w_mm <= 0 or h_mm <= 0:
+                continue
+            margin_x_mm = normalize_mm(r_x0 - c_x0)
+            margin_y_mm = normalize_mm(r_y0 - c_y0)
+            area = w_mm * h_mm
+            items.append((area, (w_mm, h_mm, margin_x_mm, margin_y_mm)))
+
+    items.sort(key=lambda t: t[0], reverse=True)
+    voids_out = [item[1] for item in items[:max_voids]]
+
+    return {
+        "voids": voids_out,
+        "has_unhandled_voids": len(items) > max_voids,
+    }
+
+
 def _scan_min_width_mm(paths64, num_samples=_SCAN_SAMPLES):
     """Приблизительная минимальная рабочая ширина фигуры.
 
@@ -1067,6 +1211,44 @@ def evaluate_shift_exact(
         x_positions, y_positions, hole_paths, step_x, step_y
     )
 
+    # Штраф за некратность подрезок CUT_ROUND_MM (тайбрекер)
+    # Внешний контур — приоритет; колонны — вторичный тайбрекер.
+    step_x_mm_r = internal_to_mm(step_x)
+    step_y_mm_r = internal_to_mm(step_y)
+    base_x_mm_r = internal_to_mm(base_x)
+    base_y_mm_r = internal_to_mm(base_y)
+
+    def _edge_penalty_x(edge_x_mm):
+        cut = (base_x_mm_r - edge_x_mm) % step_x_mm_r
+        if cut < 0:
+            cut += step_x_mm_r
+        r = cut % CUT_ROUND_MM
+        return min(r, CUT_ROUND_MM - r)
+
+    def _edge_penalty_y(edge_y_mm):
+        cut = (base_y_mm_r - edge_y_mm) % step_y_mm_r
+        if cut < 0:
+            cut += step_y_mm_r
+        r = cut % CUT_ROUND_MM
+        return min(r, CUT_ROUND_MM - r)
+
+    outer_roundness_penalty = round(
+        _edge_penalty_x(internal_to_mm(min_x)) + _edge_penalty_y(internal_to_mm(min_y)),
+        2,
+    )
+
+    hole_roundness_penalty = 0.0
+    if hole_paths is not None:
+        for _hp in hole_paths:
+            _hxs = [clipper_to_mm(pt.X) for pt in _hp]
+            _hys = [clipper_to_mm(pt.Y) for pt in _hp]
+            if _hxs and _hys:
+                hole_roundness_penalty += _edge_penalty_x(min(_hxs))
+                hole_roundness_penalty += _edge_penalty_x(max(_hxs))
+                hole_roundness_penalty += _edge_penalty_y(min(_hys))
+                hole_roundness_penalty += _edge_penalty_y(max(_hys))
+    hole_roundness_penalty = round(hole_roundness_penalty, 2)
+
     score = (
         unsplit_holes * 50000
         + non_viable_count * 10000
@@ -1091,6 +1273,8 @@ def evaluate_shift_exact(
         -full_count,
         unique_sizes,
         -min_viable_cut_rank,
+        outer_roundness_penalty,
+        hole_roundness_penalty,
     )
 
     return {
@@ -1405,6 +1589,85 @@ def _dedup_key(result):
     )
 
 
+def _cut_round_deltas(
+    best_result,
+    base_x_raw,
+    base_y_raw,
+    step_x,
+    step_y,
+    outer_bbox_internal,
+    hole_paths=None,
+):
+    """Аналитически вычисляет дельты сдвига, при которых подрезки
+    у границ контура и колонн становятся кратны CUT_ROUND_MM.
+
+    Кандидаты генерируются отдельно для внешнего контура (приоритет)
+    и для колонн (дополнительно).
+
+    Возвращает список пар (shift_x, shift_y) в internal units.
+    """
+    shift_x = best_result["shift_x_internal"]
+    shift_y = best_result["shift_y_internal"]
+
+    base_x_mm = internal_to_mm(base_x_raw + shift_x)
+    base_y_mm = internal_to_mm(base_y_raw + shift_y)
+    step_x_mm = internal_to_mm(step_x)
+    step_y_mm = internal_to_mm(step_y)
+
+    tol = 0.05  # мм — порог «уже кратно»
+
+    def _deltas_for_edge(edge_mm, step_mm, base_mm):
+        cut = (base_mm - edge_mm) % step_mm
+        if cut < 0:
+            cut += step_mm
+        r = cut % CUT_ROUND_MM
+        ds = set()
+        if min(r, CUT_ROUND_MM - r) > tol:
+            ds.add(-r)
+            ds.add(CUT_ROUND_MM - r)
+        return ds
+
+    # Кандидаты только по внешнему контуру (приоритет)
+    dx_outer = _deltas_for_edge(
+        internal_to_mm(outer_bbox_internal[0]), step_x_mm, base_x_mm
+    )
+    dy_outer = _deltas_for_edge(
+        internal_to_mm(outer_bbox_internal[1]), step_y_mm, base_y_mm
+    )
+
+    # Кандидаты по колоннам (дополнительно)
+    dx_holes = set()
+    dy_holes = set()
+    if hole_paths is not None:
+        for hp in hole_paths:
+            hxs = [clipper_to_mm(pt.X) for pt in hp]
+            hys = [clipper_to_mm(pt.Y) for pt in hp]
+            if hxs and hys:
+                dx_holes |= _deltas_for_edge(min(hxs), step_x_mm, base_x_mm)
+                dx_holes |= _deltas_for_edge(max(hxs), step_x_mm, base_x_mm)
+                dy_holes |= _deltas_for_edge(min(hys), step_y_mm, base_y_mm)
+                dy_holes |= _deltas_for_edge(max(hys), step_y_mm, base_y_mm)
+
+    # Сначала кандидаты с outer-дельтами, потом с hole-дельтами
+    dx_all = {0.0} | dx_outer | dx_holes
+    dy_all = {0.0} | dy_outer | dy_holes
+
+    seen = set()
+    pairs = []
+    for dx in sorted(dx_all):
+        for dy in sorted(dy_all):
+            if abs(dx) < tol and abs(dy) < tol:
+                continue
+            new_sx = _normalize_shift(shift_x + mm_to_internal(dx), step_x)
+            new_sy = _normalize_shift(shift_y + mm_to_internal(dy), step_y)
+            key = (round(internal_to_mm(new_sx)), round(internal_to_mm(new_sy)))
+            if key not in seen:
+                seen.add(key)
+                pairs.append((new_sx, new_sy))
+
+    return pairs
+
+
 def find_best_shift(
     step_x,
     step_y,
@@ -1549,38 +1812,31 @@ def find_best_shift(
                 ):
                     all_results_map[key] = result
 
-    # ---- Округление лучшего до 10 мм и повторная оценка ----
+    # ---- Фаза 3: округление подрезок до кратных CUT_ROUND_MM ----
     all_results = list(all_results_map.values())
     results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
     best_raw = results_sorted[0]
 
-    round_internal = mm_to_internal(SHIFT_ROUND_MM)
-    if round_internal > 0:
-        rx = _normalize_shift(
-            math.floor(best_raw["shift_x_internal"] / round_internal + 0.5)
-            * round_internal,
-            step_x,
-        )
-        ry = _normalize_shift(
-            math.floor(best_raw["shift_y_internal"] / round_internal + 0.5)
-            * round_internal,
-            step_y,
-        )
-        rounded_key = (
-            round(internal_to_mm(rx)),
-            round(internal_to_mm(ry)),
-        )
-        if rounded_key != _dedup_key(best_raw):
-            rounded_result = evaluate_shift_exact(shift_x=rx, shift_y=ry, **eval_kwargs)
-            rk = _dedup_key(rounded_result)
-            if (
-                rk not in all_results_map
-                or rounded_result["rank_key"] < all_results_map[rk]["rank_key"]
-            ):
-                all_results_map[rk] = rounded_result
+    _cr_pairs = _cut_round_deltas(
+        best_raw,
+        base_x_raw,
+        base_y_raw,
+        step_x,
+        step_y,
+        outer_bbox_internal,
+        hole_paths=hole_paths,
+    )
+    for _cr_sx, _cr_sy in _cr_pairs:
+        _cr_result = evaluate_shift_exact(shift_x=_cr_sx, shift_y=_cr_sy, **eval_kwargs)
+        _cr_key = _dedup_key(_cr_result)
+        if (
+            _cr_key not in all_results_map
+            or _cr_result["rank_key"] < all_results_map[_cr_key]["rank_key"]
+        ):
+            all_results_map[_cr_key] = _cr_result
 
-            all_results = list(all_results_map.values())
-            results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
+    all_results = list(all_results_map.values())
+    results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
 
     top_results = results_sorted[: min(top_n, len(results_sorted))]
 

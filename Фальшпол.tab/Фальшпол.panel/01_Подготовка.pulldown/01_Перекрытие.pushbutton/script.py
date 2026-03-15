@@ -4,7 +4,9 @@ from Autodesk.Revit.DB import BuiltInCategory  # type: ignore
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
+    FloorOrPartSelectionFilter,
     get_id_value,
+    get_source_floor,
     set_double_param,
     set_string_param,
 )
@@ -38,10 +40,14 @@ def ask_mm_value(title, prompt, default_value):
 
 try:
     # 1. Выбор перекрытия
+    pick_filter = FloorOrPartSelectionFilter()
     ref = uidoc.Selection.PickObject(
-        ObjectType.Element, "Выберите управляющее перекрытие фальшпола"
+        ObjectType.Element,
+        pick_filter,
+        "Выберите управляющее перекрытие фальшпола",
     )
-    floor = doc.GetElement(ref.ElementId)
+    picked_el = doc.GetElement(ref.ElementId)
+    floor = get_source_floor(picked_el)
 
     if not floor or not floor.Category:
         forms.alert("Элемент не найден или без категории.", title=TITLE_PREPARE)

@@ -10,7 +10,6 @@ import os
 
 from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
-    BuiltInParameterGroup,
     Category,
     CategorySet,
     ExternalDefinitionCreationOptions,
@@ -97,6 +96,13 @@ PARAM_DEFS = [
         _CATS_FLOORS,
         True,
     ),
+    (
+        "FP_ЗоныУсиления_JSON",
+        StorageType.String,
+        "JSON зон усиления лонжеронов",
+        _CATS_FLOORS,
+        True,
+    ),
     ("FP_ID_Стоек", StorageType.String, "ID стоек (;)", _CATS_FLOORS, True),
     (
         "FP_Режим_Нижних",
@@ -173,10 +179,52 @@ PARAM_DEFS = [
         _CATS_GENERIC,
         True,
     ),
+    # ── Вырезы плитки (до 3 void) ──
+    ("FP_Вырез_X", StorageType.Double, "Ширина выреза 1 (ft)", _CATS_GENERIC, True),
+    ("FP_Вырез_Y", StorageType.Double, "Высота выреза 1 (ft)", _CATS_GENERIC, True),
     (
-        "FP_Вырез_Видимость",
-        "YesNo",
-        "Видимость выреза (Да/Нет)",
+        "FP_Вырез_Смещ_X",
+        StorageType.Double,
+        "Смещение выреза 1 по X (ft)",
+        _CATS_GENERIC,
+        True,
+    ),
+    (
+        "FP_Вырез_Смещ_Y",
+        StorageType.Double,
+        "Смещение выреза 1 по Y (ft)",
+        _CATS_GENERIC,
+        True,
+    ),
+    ("FP_Вырез2_X", StorageType.Double, "Ширина выреза 2 (ft)", _CATS_GENERIC, True),
+    ("FP_Вырез2_Y", StorageType.Double, "Высота выреза 2 (ft)", _CATS_GENERIC, True),
+    (
+        "FP_Вырез2_Смещ_X",
+        StorageType.Double,
+        "Смещение выреза 2 по X (ft)",
+        _CATS_GENERIC,
+        True,
+    ),
+    (
+        "FP_Вырез2_Смещ_Y",
+        StorageType.Double,
+        "Смещение выреза 2 по Y (ft)",
+        _CATS_GENERIC,
+        True,
+    ),
+    ("FP_Вырез3_X", StorageType.Double, "Ширина выреза 3 (ft)", _CATS_GENERIC, True),
+    ("FP_Вырез3_Y", StorageType.Double, "Высота выреза 3 (ft)", _CATS_GENERIC, True),
+    (
+        "FP_Вырез3_Смещ_X",
+        StorageType.Double,
+        "Смещение выреза 3 по X (ft)",
+        _CATS_GENERIC,
+        True,
+    ),
+    (
+        "FP_Вырез3_Смещ_Y",
+        StorageType.Double,
+        "Смещение выреза 3 по Y (ft)",
         _CATS_GENERIC,
         True,
     ),
@@ -266,6 +314,29 @@ def _storage_to_param_type(st):
     return None
 
 
+def _get_data_group_id():
+    """Возвращает идентификатор группы 'Данные' для Insert Project Parameter.
+
+    Revit API менялся: старые версии используют BuiltInParameterGroup,
+    новые - GroupTypeId (ForgeTypeId).
+    """
+    try:
+        from Autodesk.Revit.DB import GroupTypeId  # type: ignore
+
+        return GroupTypeId.Data
+    except Exception:
+        pass
+
+    try:
+        from Autodesk.Revit.DB import BuiltInParameterGroup  # type: ignore
+
+        return BuiltInParameterGroup.PG_DATA
+    except Exception:
+        pass
+
+    return None
+
+
 def _get_existing_bindings():
     """Собирает словарь {имя: definition} для привязанных к проекту параметров."""
     existing = {}
@@ -340,20 +411,36 @@ try:
         else:
             needed.append((name, st, desc, cats, is_instance))
 
-    if not needed and not wrong_type and not obsolete:
-        forms.alert(
-            "Все {} параметров уже есть в проекте с правильным типом.".format(
+    has_actions = bool(needed or wrong_type)
+
+    if not has_actions:
+        msg = [
+            "Все {} актуальных параметров уже есть в проекте с правильным типом.".format(
                 len(PARAM_DEFS)
-            ),
-            title=TITLE,
-        )
+            )
+        ]
+        if obsolete:
+            msg.extend(
+                [
+                    "",
+                    "Обнаружены legacy FP_ параметры (не удаляются автоматически): {}".format(
+                        len(obsolete)
+                    ),
+                    "  {}".format(", ".join(sorted(obsolete))),
+                ]
+            )
+            msg.append("")
+            msg.append(
+                "Для удаления legacy используй отдельную кнопку 'Вычистить FP_ (опасно)'."
+            )
+        forms.alert("\n".join(msg), title=TITLE)
     else:
         parts = []
         if already:
             parts.append("Уже есть (ОК): {}".format(len(already)))
         if obsolete:
             parts.append(
-                "Устаревшие (будут удалены): {}\n  {}".format(
+                "Legacy (не будут удалены): {}\n  {}".format(
                     len(obsolete), ", ".join(sorted(obsolete))
                 )
             )
@@ -368,23 +455,14 @@ try:
             parts.append("Новых: {}".format(new_count))
 
         confirm = forms.alert(
-            "\n".join(parts) + "\n\nПродолжить?",
+            "\n".join(parts)
+            + "\n\nБудут только добавлены/обновлены актуальные параметры. Продолжить?",
             title=TITLE,
             yes=True,
             no=True,
         )
         if not confirm:
             raise Exception("Отмена")
-
-        # ── Шаг 0: удалить устаревшие FP_-параметры ──
-        removed_obsolete = []
-        if obsolete:
-            with revit.Transaction("Удалить устаревшие FP_ параметры"):
-                bm = doc.ParameterBindings
-                for name in obsolete:
-                    defn = existing.get(name)
-                    if defn and bm.Remove(defn):
-                        removed_obsolete.append(name)
 
         # ── Шаг 1: удалить привязки параметров с неправильным типом ──
         if wrong_type:
@@ -427,6 +505,7 @@ try:
 
             added = []
             errors = []
+            data_group_id = _get_data_group_id()
 
             with revit.Transaction("Добавить FP_ параметры"):
                 for name, st, desc, cats, is_instance in needed:
@@ -443,9 +522,12 @@ try:
                         else:
                             binding = TypeBinding(cat_set)
 
-                        ok = doc.ParameterBindings.Insert(
-                            defn, binding, BuiltInParameterGroup.PG_DATA
-                        )
+                        if data_group_id is not None:
+                            ok = doc.ParameterBindings.Insert(
+                                defn, binding, data_group_id
+                            )
+                        else:
+                            ok = doc.ParameterBindings.Insert(defn, binding)
                         if ok:
                             added.append(name)
                         else:
@@ -464,12 +546,6 @@ try:
                 pass
 
         report = []
-        if removed_obsolete:
-            report.append(
-                "Удалено устаревших: {} ({})".format(
-                    len(removed_obsolete), ", ".join(sorted(removed_obsolete))
-                )
-            )
         if wrong_type:
             report.append(
                 "Пересоздано (Number→Length): {}".format(
@@ -479,6 +555,8 @@ try:
         new_added = [n for n in added if n not in wrong_type]
         if new_added:
             report.append("Новых добавлено: {}".format(len(new_added)))
+        if obsolete:
+            report.append("Legacy не тронуты: {}".format(len(obsolete)))
         if errors:
             report.append("")
             report.append("Ошибки ({}):".format(len(errors)))
