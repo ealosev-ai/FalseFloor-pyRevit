@@ -1,0 +1,9 @@
+title: Стрингеры
+tooltip: >-
+  Размещение и удаление стрингеров фальшпола.
+  Верхние — по линиям сетки, нижние — перпендикулярно.
+layout:
+  - Place.pushbutton[title:Разместить]
+  - Delete.pushbutton[title:Удалить]
+  - Reinforce_Add.pushbutton[title:Усиление добавить]
+  - Reinforce_Remove.pushbutton[title:Усиление удалить]

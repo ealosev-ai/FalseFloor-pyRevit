@@ -59,8 +59,8 @@ try:
     cur_sx_mm = round(internal_to_mm(cur_sx)) if cur_sx else 0.0
     cur_sy_mm = round(internal_to_mm(cur_sy)) if cur_sy else 0.0
 
-    # Зазор от рёбер вырезов = макс. ширина профиля лонжерона
-    _longeron_clearance_mm = 0
+    # Зазор от рёбер вырезов = макс. ширина профиля стрингера
+    _stringer_clearance_mm = 0
     for fam in FilteredElementCollector(doc).OfClass(Family):
         if fam.Name == "ФП_Лонжерон":
             for sid in fam.GetFamilySymbolIds():
@@ -69,12 +69,12 @@ try:
                     pw = get_double_param(sym, "FP_Ширина_Профиля")
                     if pw:
                         pw_mm = internal_to_mm(pw)
-                        if pw_mm > _longeron_clearance_mm:
-                            _longeron_clearance_mm = pw_mm
+                        if pw_mm > _stringer_clearance_mm:
+                            _stringer_clearance_mm = pw_mm
             break
 
     search = evaluate_floor_shift(
-        doc, floor, min_edge_clearance_mm=_longeron_clearance_mm
+        doc, floor, min_edge_clearance_mm=_stringer_clearance_mm
     )
 
     best = search["best"]

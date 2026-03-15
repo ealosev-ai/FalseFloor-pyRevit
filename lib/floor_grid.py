@@ -27,7 +27,7 @@ GRID_COLOR = Color(100, 149, 237)  # васильковый синий
 GRID_LINE_PATTERN = "Center"
 
 BASE_MARKER_STYLE_NAME = "ФП_База"
-BASE_MARKER_COLOR = Color(0, 100, 255)
+BASE_MARKER_COLOR = Color(255, 0, 120)
 
 CONTOUR_STYLE_NAME = "ФП_Контур"
 CONTOUR_COLOR = Color(0, 255, 0)
@@ -35,12 +35,12 @@ CONTOUR_COLOR = Color(0, 255, 0)
 NEAR_COLUMN_STYLE_NAME = "ФП_СеткаКолонна"
 NEAR_COLUMN_COLOR = Color(255, 80, 80)  # красный — внимание
 
-# Минимальный порог, если лонжерон не найден (мм)
+# Минимальный порог, если стрингер не найден (мм)
 _DEFAULT_COL_CLEARANCE_MM = 30.0
 
 
-def _get_longeron_clearance_mm():
-    """Читает макс. ширину профиля лонжерона (мм) для near-edge подсветки."""
+def _get_stringer_clearance_mm():
+    """Читает макс. ширину профиля стрингера (мм) для near-edge подсветки."""
     clearance = 0.0
     for fam in FilteredElementCollector(doc).OfClass(Family):
         if fam.Name == "ФП_Лонжерон":
@@ -58,8 +58,9 @@ def _get_longeron_clearance_mm():
 
 # Минимальная длина отрезка (в футах) — короче не рисуем
 _MIN_SEG_LEN = 0.005  # ~1.5 мм
-# Размер крестика точки базы (в футах) — ~150мм
-_MARKER_ARM = 0.5
+# Размер маркера базовой точки (в футах)
+_MARKER_ARM = 0.45  # ~137 мм
+_MARKER_RING_HALF = 0.18  # ~55 мм
 
 _INTERNAL_TO_MM = 304.8
 _SCALE = 1000.0  # мм → clipper-единицы
@@ -363,7 +364,7 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
             )
 
         # Проверка: линия сетки рядом с ребром колонны?
-        _col_clearance = _get_longeron_clearance_mm() / _INTERNAL_TO_MM  # мм → feet
+        _col_clearance = _get_stringer_clearance_mm() / _INTERNAL_TO_MM  # мм → feet
 
         def _is_near_column_x(x_val):
             for hmin_x, _hmin_y, hmax_x, _hmax_y in hole_edge_coords:
@@ -418,9 +419,11 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
                 doc,
                 BASE_MARKER_STYLE_NAME,
                 BASE_MARKER_COLOR,
-                weight=3,
+                weight=4,
                 update_existing=update_style,
             )
+
+            # Контрастная, но компактная мишень: + и квадратная рамка.
             m_line_h = Line.CreateBound(
                 XYZ(base_x - _MARKER_ARM, base_y, z0),
                 XYZ(base_x + _MARKER_ARM, base_y, z0),
@@ -428,6 +431,7 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
             dc_h = doc.Create.NewDetailCurve(view, m_line_h)
             dc_h.LineStyle = marker_style
             marker_ids.append(str(dc_h.Id.Value))
+
             m_line_v = Line.CreateBound(
                 XYZ(base_x, base_y - _MARKER_ARM, z0),
                 XYZ(base_x, base_y + _MARKER_ARM, z0),
@@ -435,6 +439,21 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
             dc_v = doc.Create.NewDetailCurve(view, m_line_v)
             dc_v.LineStyle = marker_style
             marker_ids.append(str(dc_v.Id.Value))
+
+            rx0 = base_x - _MARKER_RING_HALF
+            rx1 = base_x + _MARKER_RING_HALF
+            ry0 = base_y - _MARKER_RING_HALF
+            ry1 = base_y + _MARKER_RING_HALF
+            ring_lines = [
+                Line.CreateBound(XYZ(rx0, ry0, z0), XYZ(rx1, ry0, z0)),
+                Line.CreateBound(XYZ(rx1, ry0, z0), XYZ(rx1, ry1, z0)),
+                Line.CreateBound(XYZ(rx1, ry1, z0), XYZ(rx0, ry1, z0)),
+                Line.CreateBound(XYZ(rx0, ry1, z0), XYZ(rx0, ry0, z0)),
+            ]
+            for ring in ring_lines:
+                dc_r = doc.Create.NewDetailCurve(view, ring)
+                dc_r.LineStyle = marker_style
+                marker_ids.append(str(dc_r.Id.Value))
 
         ids_string = ";".join(created_ids)
         ok = set_string_param(floor, "FP_ID_ЛинийСетки", ids_string)

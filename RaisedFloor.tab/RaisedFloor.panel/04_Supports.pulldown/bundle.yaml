@@ -1,0 +1,7 @@
+title: Стойки
+tooltip: >-
+  Размещение и удаление стоек фальшпола.
+  Расстановка по нижним стрингерам с заданным шагом.
+layout:
+  - Place.pushbutton[title:Разместить]
+  - Delete.pushbutton[title:Удалить]

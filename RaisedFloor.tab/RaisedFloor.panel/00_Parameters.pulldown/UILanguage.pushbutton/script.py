@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Переключение языка runtime UI (Auto/RU/EN) для FalseFloor.
+"""Переключение языка runtime UI (Auto/RU/EN) для RaisedFloor.
 
-Сохраняет выбор в переменную пользователя FALSEFLOOR_LANG.
+Сохраняет выбор в переменную пользователя RAISEDFLOOR_LANG.
 Auto: удаляет override и включает автоопределение по CurrentUICulture.
 """
 
@@ -10,7 +10,7 @@ import os
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms  # type: ignore
 
-ENV_NAME = "FALSEFLOOR_LANG"
+ENV_NAME = "RAISEDFLOOR_LANG"
 
 
 def _get_current_mode():

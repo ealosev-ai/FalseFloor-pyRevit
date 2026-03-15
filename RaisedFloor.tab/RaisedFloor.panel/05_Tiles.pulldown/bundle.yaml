@@ -2,3 +2,7 @@ title: Плитки
 tooltip: >-
   Размещение и управление плитками фальшпола.
   Раскладка по сетке, пометка вентилируемых.
+layout:
+  - Place.pushbutton[title:Разместить]
+  - Delete.pushbutton[title:Удалить]
+  - Ventilation.pushbutton[title:Вентиляция]

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Удаление ВСЕХ элементов фальшпола: плитки, лонжероны, стойки, сетка, контур."""
+"""Удаление ВСЕХ элементов фальшпола: плитки, стрингеры, стойки, сетка, контур."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Лонжероны: удалить зону усиления по ID."""
+"""Стрингеры: удалить зону усиления по ID."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore

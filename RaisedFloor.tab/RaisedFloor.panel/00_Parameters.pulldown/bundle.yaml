@@ -4,7 +4,7 @@ tooltip: >-
   Актуализация в проекте и семействах.
   Legacy параметры не удаляются автоматически.
 layout:
-  - Проект.pushbutton
-  - Семейства.pushbutton
+  - Project.pushbutton[title:Проект]
+  - Families.pushbutton[title:Семейства]
   - UILanguage.pushbutton
-  - Очистить.pushbutton
+  - ClearParams.pushbutton[title:Очистить]

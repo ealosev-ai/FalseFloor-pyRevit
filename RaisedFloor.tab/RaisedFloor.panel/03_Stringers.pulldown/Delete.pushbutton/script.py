@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Удаление всех лонжеронов, размещённых скриптом."""
+"""Удаление всех стрингеров, размещённых скриптом."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
