@@ -31,13 +31,14 @@ from floor_exact import (  # type: ignore
     mm_to_internal,
 )
 from floor_grid import get_bbox_xy  # type: ignore
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "05 Плитки"
+TITLE = tr("title_tiles")
 FAMILY_NAME = "ФП_Плитка"
 _CANCELLED = "@@CANCELLED@@"
 MIN_VIABLE_WIDTH_MM = 100.0
@@ -158,7 +159,7 @@ def _find_vent_symbol(family):
 
 try:
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise Exception(_CANCELLED)
 
     pick_filter = FloorOrPartSelectionFilter()
@@ -166,7 +167,7 @@ try:
         ref = uidoc.Selection.PickObject(
             ObjectType.Element,
             pick_filter,
-            "Выберите перекрытие фальшпола",
+            tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
         raise Exception(_CANCELLED)
@@ -174,14 +175,13 @@ try:
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
     if not floor:
-        raise Exception("Не удалось определить исходное перекрытие")
+        raise Exception(tr("source_floor_not_found"))
 
     # --- Найти семейство ---
     symbol = _find_family_symbol(FAMILY_NAME)
     if not symbol:
         forms.alert(
-            "Семейство '{}' не найдено в проекте.\n"
-            "Загрузи его перед запуском.".format(FAMILY_NAME),
+            tr("tiles_family_missing", family=FAMILY_NAME),
             title=TITLE,
         )
         raise Exception(_CANCELLED)
@@ -285,39 +285,32 @@ try:
                 _diag_small += 1
 
     if cells_to_place == 0:
-        forms.alert("Нет ячеек для размещения.", title=TITLE)
+        forms.alert(tr("tiles_no_cells"), title=TITLE)
         raise Exception(_CANCELLED)
 
-    _diag_text = (
-        "Ячеек всего: {}\n"
-        "  Полных: {}\n"
-        "  Простых подрезок: {}\n"
-        "  Сложных подрезок: {}\n"
-        "  Фрагментов: {}\n"
-        "  Пустых: {}\n"
-        "  Слишком мелких: {}\n"
-    ).format(
-        len(x_positions) * len(y_positions),
-        _diag_full,
-        _diag_simple,
-        _diag_complex,
-        _diag_fragment,
-        _diag_empty,
-        _diag_small,
+    _diag_text = tr(
+        "tiles_diag",
+        total=len(x_positions) * len(y_positions),
+        full=_diag_full,
+        simple=_diag_simple,
+        complex=_diag_complex,
+        fragment=_diag_fragment,
+        empty=_diag_empty,
+        small=_diag_small,
     )
 
     _vent_info = ""
     if vent_cells:
-        _vent_info = "\nВентилируемых плиток (старых): {}\n".format(len(vent_cells))
+        _vent_info = tr("tiles_old_vent", count=len(vent_cells))
 
     confirm = forms.alert(
-        "Будет размещено плиток: {}\n"
-        "Типоразмер: {}\n"
-        "Удалено старых: {}\n"
-        "{}\n"
-        "{}\n"
-        "Продолжить?".format(
-            cells_to_place, _sym_name, len(old_ids), _vent_info, _diag_text
+        tr(
+            "tiles_confirm",
+            cells=cells_to_place,
+            symbol=_sym_name,
+            deleted=len(old_ids),
+            vent=_vent_info,
+            diag=_diag_text,
         ),
         title=TITLE,
         yes=True,
@@ -328,17 +321,14 @@ try:
 
     if vent_cells:
         keep_vent = forms.alert(
-            "Обнаружено {} вентилируемых плиток.\n"
-            "Сохранить пометки вентиляции?\n\n"
-            "Да — восстановить вентиляцию\n"
-            "Нет — все плитки стандартные".format(len(vent_cells)),
+            tr("tiles_keep_vent", count=len(vent_cells)),
             title=TITLE,
             yes=True,
             no=True,
         )
 
     # --- Размещение ---
-    with revit.Transaction("Разместить плитки фальшпола"):
+    with revit.Transaction(tr("tx_place_tiles")):
         if not symbol.IsActive:
             symbol.Activate()
             doc.Regenerate()
@@ -354,7 +344,7 @@ try:
             except Exception:
                 pass
 
-        placed_ids = []
+        placed_ids = []  # type: list[str]
         full_count = 0
         cut_simple_count = 0
         cut_complex_count = 0
@@ -398,8 +388,7 @@ try:
                     missing = _validate_params(instance, _REQUIRED_PARAMS)
                     if missing:
                         forms.alert(
-                            "Семейство не содержит параметры:\n{}\n\n"
-                            "Добавь их и перезапусти.".format("\n".join(missing)),
+                            tr("tiles_missing_params", params="\n".join(missing)),
                             title=TITLE,
                         )
                         raise Exception(_CANCELLED)
@@ -512,33 +501,33 @@ try:
 
     # --- Отчёт ---
     done_lines = [
-        "Готово.",
+        tr("tiles_done"),
         "",
-        "Размещено: {}".format(len(placed_ids)),
-        "  Полных: {}".format(full_count),
-        "  Простых подрезок: {}".format(cut_simple_count),
-        "  Сложных подрезок: {}".format(cut_complex_count),
+        tr("tiles_placed", count=len(placed_ids)),
+        tr("tiles_full", count=full_count),
+        tr("tiles_simple", count=cut_simple_count),
+        tr("tiles_complex", count=cut_complex_count),
     ]
     if cut_complex_count > 0:
-        done_lines.append("    с вырезами: {}".format(cut_complex_with_voids))
+        done_lines.append(tr("tiles_with_voids", count=cut_complex_with_voids))
         if cut_complex_unhandled > 0:
-            done_lines.append(
-                "    с неописанными void: {}".format(cut_complex_unhandled)
-            )
+            done_lines.append(tr("tiles_unhandled_voids", count=cut_complex_unhandled))
         if placed_ids:
             _chk = doc.GetElement(ElementId(int(placed_ids[0])))
             if _chk:
                 for _vi, _vp in enumerate(_VOID_PARAMS):
                     if not _chk.LookupParameter(_vp[0]):
-                        done_lines.append("  \u26a0 В семействе нет {}!".format(_vp[0]))
+                        done_lines.append(
+                            tr("tiles_family_missing_param", param=_vp[0])
+                        )
     done_lines.extend(
         [
             "",
-            "Удалено старых: {}".format(deleted),
+            tr("deleted_old", count=deleted),
         ]
     )
     if vent_restored > 0:
-        done_lines.append("Восстановлено вентилируемых: {}".format(vent_restored))
+        done_lines.append(tr("tiles_vent_restored", count=vent_restored))
 
     forms.alert("\n".join(done_lines), title=TITLE)
 
@@ -546,4 +535,4 @@ except Exception as ex:
     if str(ex) == _CANCELLED:
         pass
     else:
-        forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

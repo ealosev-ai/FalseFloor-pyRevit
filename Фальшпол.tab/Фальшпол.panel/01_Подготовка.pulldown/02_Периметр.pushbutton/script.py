@@ -21,6 +21,7 @@ from floor_common import (  # type: ignore
     parse_ids_from_string,
     set_string_param,
 )
+from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_CONTOUR  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
@@ -90,7 +91,7 @@ def _collect_styled_contour_ids(style_id):
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(
-            "Открой план, чтобы построить контур.",
+            tr("open_plan_contour"),
             title=TITLE_CONTOUR,
         )
         raise Exception("Active view is not a plan")
@@ -99,7 +100,7 @@ try:
     ref = uidoc.Selection.PickObject(
         ObjectType.Element,
         pick_filter,
-        "Выберите перекрытие фальшпола или его часть",
+        tr("pick_floor_or_part_prompt"),
     )
 
     picked_el = doc.GetElement(ref.ElementId)
@@ -107,7 +108,7 @@ try:
 
     if not floor:
         forms.alert(
-            "Не удалось определить исходное перекрытие.",
+            tr("contour_source_not_found"),
             title=TITLE_CONTOUR,
         )
         raise Exception("Source floor not found")
@@ -116,7 +117,7 @@ try:
 
     if not face or not edge_loops:
         forms.alert(
-            "Не удалось получить верхнюю грань или её контуры.",
+            tr("contour_face_not_found"),
             title=TITLE_CONTOUR,
         )
         raise Exception("Top face or loops not found")
@@ -131,7 +132,7 @@ try:
     created_ids = []
     deleted_count = 0
 
-    with revit.Transaction("Обвести контур фальшпола"):
+    with revit.Transaction(tr("tx_draw_contour")):
         contour_style = get_or_create_line_style(
             doc,
             CONTOUR_STYLE_NAME,
@@ -154,24 +155,21 @@ try:
         ids_string = ";".join(created_ids)
         ok = set_string_param(floor, "FP_ID_ЛинийКонтура", ids_string)
         if not ok:
-            raise Exception("Не удалось записать FP_ID_ЛинийКонтура")
+            raise Exception(tr("contour_write_failed"))
 
     forms.alert(
-        "Готово.\n\n"
-        "ID перекрытия: {}\n"
-        "Удалено старых линий: {}\n"
-        "Создано новых линий: {}\n"
-        "Контуров найдено: {}".format(
-            floor.Id.Value,
-            deleted_count,
-            len(created_ids),
-            edge_loops.Count if edge_loops else 0,
+        tr(
+            "contour_done",
+            floor_id=floor.Id.Value,
+            deleted=deleted_count,
+            created=len(created_ids),
+            loops=edge_loops.Count if edge_loops else 0,
         ),
         title=TITLE_CONTOUR,
     )
 
 except OperationCanceledException:
-    forms.alert("Операция отменена.", title=TITLE_CONTOUR)
+    forms.alert(tr("operation_cancelled"), title=TITLE_CONTOUR)
 
 except Exception as ex:
-    forms.alert("Ошибка:\n{}".format(str(ex)), title=TITLE_CONTOUR)
+    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_CONTOUR)

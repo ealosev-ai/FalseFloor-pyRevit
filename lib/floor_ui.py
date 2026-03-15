@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
-TITLE_PREPARE = "01 Подготовить"
+from floor_i18n import tr  # type: ignore
+
+TITLE_PREPARE = tr("title_prepare")
 TITLE_PARTS = "⛔ Части (устар.)"
-TITLE_GRID = "03 Сетка"
+TITLE_GRID = tr("title_grid")
 TITLE_SPLIT = "⛔ Разделить (устар.)"
-TITLE_CONTOUR = "02 Контур"
-TITLE_SHIFT = "04 Смещение"
+TITLE_CONTOUR = tr("title_contour")
+TITLE_SHIFT = tr("title_shift")
 
 TITLE_DIAG_CELLS = "D1 Точные ячейки"
 TITLE_DIAG_CLIPPER = "D2 Clipper test"
@@ -20,62 +22,69 @@ def get_shift_quality_status(result):
     complex_count = result.get("complex_count", 0)
 
     if non_viable > 0:
-        return "Недопустимый"
+        return tr("shift_status_invalid")
     if complex_count > 0 or unwanted > 0:
-        return "Допустимый"
+        return tr("shift_status_ok")
     acceptable = result.get("acceptable_count", 0)
     if acceptable > 0:
-        return "Хороший"
-    return "Отличный"
+        return tr("shift_status_good")
+    return tr("shift_status_great")
 
 
 def format_shift_result_lines(result, index=None, area_text=None):
     lines = []
-    lines.append("Статус: {}".format(get_shift_quality_status(result)))
+    lines.append(tr("shift_status", status=get_shift_quality_status(result)))
 
     if index is None:
-        lines.append("Смещение X: {:.0f} мм".format(result["shift_x_mm"]))
-        lines.append("Смещение Y: {:.0f} мм".format(result["shift_y_mm"]))
+        lines.append(tr("shift_x", x=result["shift_x_mm"]))
+        lines.append(tr("shift_y", y=result["shift_y_mm"]))
     else:
         lines.append(
-            "{}. X={:.0f} мм, Y={:.0f} мм".format(
-                index, result["shift_x_mm"], result["shift_y_mm"]
+            tr(
+                "shift_xy_ranked",
+                index=index,
+                x=result["shift_x_mm"],
+                y=result["shift_y_mm"],
             )
         )
 
     lines.append(
-        "Полных: {} | Простых(>=100): {} | Сложных(>=100): {}".format(
-            result["full_count"],
-            result["viable_simple_count"],
-            result["complex_count"],
+        tr(
+            "shift_full_simple_complex",
+            full=result["full_count"],
+            simple=result["viable_simple_count"],
+            complex=result["complex_count"],
         )
     )
     lines.append(
-        "Простых всего: {} | Немонтируемых(<100): {} (вкл. micro: {})".format(
-            result["total_simple_count"],
-            result["non_viable_count"],
-            result.get("micro_fragment_count", 0),
+        tr(
+            "shift_simple_total",
+            total=result["total_simple_count"],
+            non_viable=result["non_viable_count"],
+            micro=result.get("micro_fragment_count", 0),
         )
     )
     lines.append(
-        "Недопуст: {} | Нежелат: {} | Допуст: {} | Хорош: {}".format(
-            result["non_viable_count"],
-            result.get("unwanted_count", 0),
-            result.get("acceptable_count", 0),
-            result.get("good_count", 0),
+        tr(
+            "shift_buckets",
+            non_viable=result["non_viable_count"],
+            unwanted=result.get("unwanted_count", 0),
+            acceptable=result.get("acceptable_count", 0),
+            good=result.get("good_count", 0),
         )
     )
     lines.append(
-        "Типов: {} | Мин. подрезка: {:.0f} мм | Мин. абс: {:.0f} мм".format(
-            result["unique_sizes"],
-            result["min_viable_cut_mm"],
-            result.get("min_cut_all_mm", 0.0),
+        tr(
+            "shift_types_min",
+            types=result["unique_sizes"],
+            min_viable=result["min_viable_cut_mm"],
+            min_all=result.get("min_cut_all_mm", 0.0),
         )
     )
 
     if area_text is None:
         area_text = "{:.0f} мм²".format(result["total_cut_area_mm2"])
-    lines.append("Площадь подрезок: {}".format(area_text))
+    lines.append(tr("cut_area", area=area_text))
 
     return lines
 
@@ -111,25 +120,28 @@ def format_shift_search_info_lines(search, include_threshold=False):
 
     if include_threshold:
         lines.append(
-            "Грубый шаг: {} мм | Уточнение: {} мм | Радиус: {} мм".format(
-                search["coarse_step_mm"],
-                search["refine_step_mm"],
-                search["refine_radius_mm"],
+            tr(
+                "shift_search_full",
+                coarse=search["coarse_step_mm"],
+                refine=search["refine_step_mm"],
+                radius=search["refine_radius_mm"],
             )
         )
         lines.append(
-            "Недопуст. < {} мм | Нежелат. < {} мм | Допуст. < {} мм".format(
-                search.get("unacceptable_cut_mm", 100),
-                search.get("unwanted_cut_mm", 150),
-                search.get("acceptable_cut_mm", 200),
+            tr(
+                "shift_thresholds",
+                unacc=search.get("unacceptable_cut_mm", 100),
+                unw=search.get("unwanted_cut_mm", 150),
+                acc=search.get("acceptable_cut_mm", 200),
             )
         )
     else:
         lines.append(
-            "Грубый: {} мм | Уточнение: {} мм (R {})".format(
-                search["coarse_step_mm"],
-                search["refine_step_mm"],
-                search["refine_radius_mm"],
+            tr(
+                "shift_search_short",
+                coarse=search["coarse_step_mm"],
+                refine=search["refine_step_mm"],
+                radius=search["refine_radius_mm"],
             )
         )
 
@@ -145,8 +157,12 @@ def format_shift_search_info_lines(search, include_threshold=False):
         snap_info = " (snap: X={}, Y={}, holes={})".format(snap_x, snap_y, hole_pairs)
 
     lines.append(
-        "Вариантов: грубых {}{} + уточн. {} = {}".format(
-            coarse_count, snap_info, refine_count, total_count
+        tr(
+            "shift_variants",
+            coarse=coarse_count,
+            snap=snap_info,
+            refine=refine_count,
+            total=total_count,
         )
     )
     return lines

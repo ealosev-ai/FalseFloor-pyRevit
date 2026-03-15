@@ -38,13 +38,14 @@ from floor_exact import (  # type: ignore
     mm_to_internal,
 )
 from floor_grid import get_bbox_xy  # type: ignore
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "07 Стойки"
+TITLE = tr("title_supports")
 FAMILY_SUPPORT = "ФП_Стойка"
 _CANCELLED = "@@CANCELLED@@"
 COORD_TOL = 1e-6
@@ -162,7 +163,7 @@ def _generate_support_nodes(lower_segs, max_spacing, support_half=0.0):
 
 try:
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise Exception(_CANCELLED)
 
     pick_filter = FloorOrPartSelectionFilter()
@@ -170,7 +171,7 @@ try:
         ref = uidoc.Selection.PickObject(
             ObjectType.Element,
             pick_filter,
-            "Выберите перекрытие фальшпола",
+            tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
         raise Exception(_CANCELLED)
@@ -178,13 +179,13 @@ try:
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
     if not floor:
-        raise Exception("Не удалось определить исходное перекрытие")
+        raise Exception(tr("source_floor_not_found"))
 
     # Семейство стоек
     support_symbols = _get_family_symbols(FAMILY_SUPPORT)
     if not support_symbols:
         forms.alert(
-            "Семейство '{}' не найдено.\nЗагрузи его.".format(FAMILY_SUPPORT),
+            tr("supports_family_missing", family=FAMILY_SUPPORT),
             title=TITLE,
         )
         raise Exception(_CANCELLED)
@@ -201,7 +202,7 @@ try:
             sup_dict[name] = s
         chosen_sup = forms.CommandSwitchWindow.show(
             sorted(sup_dict.keys()),
-            message="Типоразмер стойки:",
+            message=tr("supports_type_message"),
         )
         if not chosen_sup:
             raise Exception(_CANCELLED)
@@ -209,7 +210,7 @@ try:
 
     # Спросить макс. шаг стоек
     s_spacing = forms.ask_for_string(
-        prompt="Макс. шаг стоек вдоль лонжерона (мм):",
+        prompt=tr("prompt_support_spacing"),
         default=str(int(DEFAULT_MAX_SPACING_MM)),
         title=TITLE,
     )
@@ -218,14 +219,14 @@ try:
     try:
         max_spacing = mm_to_internal(float(s_spacing.strip()))
     except ValueError:
-        forms.alert("Некорректное число.", title=TITLE)
+        forms.alert(tr("invalid_number"), title=TITLE)
         raise Exception(_CANCELLED)
 
     # Чтение данных
     lower_segs = _read_lower_segments(floor)
     if not lower_segs:
         forms.alert(
-            "Нижние лонжероны не найдены.\nСначала запусти 3 Лонжероны.",
+            tr("lower_longerons_missing"),
             title=TITLE,
         )
         raise Exception(_CANCELLED)
@@ -234,11 +235,7 @@ try:
     tile_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
     if not tile_ids:
         proceed = forms.alert(
-            "Плитки ещё не размещены.\n\n"
-            "Высота стойки будет рассчитана по высоте фальшпола и толщине семейства ФП_Плитка.\n"
-            "Если потом изменится тип или толщина плитки, стойки нужно будет перестроить.\n\n"
-            "Рекомендуемый порядок: плитки → лонжероны → стойки.\n\n"
-            "Продолжить размещение стоек сейчас?",
+            tr("supports_tiles_missing"),
             title=TITLE,
             yes=True,
             no=True,
@@ -256,11 +253,7 @@ try:
     upper_longeron_ids = parse_ids_from_string(upper_ids_str)
     if not upper_longeron_ids:
         proceed = forms.alert(
-            "Верхние лонжероны не найдены.\n\n"
-            "Стойки можно разместить по нижним лонжеронам, но итоговая высотная схема\n"
-            "будет неполной до размещения верхних. После добавления верхних лонжеронов\n"
-            "стойки может потребоваться перестроить.\n\n"
-            "Продолжить размещение стоек сейчас?",
+            tr("supports_upper_missing"),
             title=TITLE,
             yes=True,
             no=True,
@@ -294,8 +287,7 @@ try:
         support_h = total_h - tile_t - profile_h_upper - profile_h_lower
         if support_h < -COORD_TOL:
             forms.alert(
-                "Конфликт высот: FP_Высота_Фальшпола меньше суммы толщин\n"
-                "(плитка + верхний профиль + нижний профиль).",
+                tr("supports_height_conflict"),
                 title=TITLE,
             )
             raise Exception(_CANCELLED)
@@ -303,18 +295,13 @@ try:
     else:
         support_h = 0.0
 
-    _h_diag = (
-        "  FP_Высота_Фальшпола = {:.0f} мм\n"
-        "  FP_Толщина_Плитки = {:.0f} мм\n"
-        "  Профиль верх = {:.0f} мм\n"
-        "  Профиль низ = {:.0f} мм\n"
-        "  → Высота стойки = {:.0f} мм"
-    ).format(
-        internal_to_mm(total_h),
-        internal_to_mm(tile_t),
-        internal_to_mm(profile_h_upper),
-        internal_to_mm(profile_h_lower),
-        internal_to_mm(support_h),
+    _h_diag = tr(
+        "supports_height_diag",
+        total=internal_to_mm(total_h),
+        tile=internal_to_mm(tile_t),
+        upper=internal_to_mm(profile_h_upper),
+        lower=internal_to_mm(profile_h_lower),
+        support=internal_to_mm(support_h),
     )
 
     # Генерация узлов стоек
@@ -349,25 +336,25 @@ try:
     old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Стоек"))
 
     msg = [
-        "Стоек: {}".format(len(support_nodes)),
-        "Нижних лонжеронов: {}".format(len(lower_segs)),
-        "Ось нижних: {}".format(lower_axis),
-        "Макс. шаг: {:.0f} мм".format(internal_to_mm(max_spacing)),
+        tr("supports_count", count=len(support_nodes)),
+        tr("supports_lower_count", count=len(lower_segs)),
+        tr("supports_axis", axis=lower_axis),
+        tr("supports_max_spacing", spacing=internal_to_mm(max_spacing)),
     ]
     if base_size > 0:
-        msg.append("Опора: {:.0f} мм".format(internal_to_mm(base_size)))
+        msg.append(tr("supports_base", size=internal_to_mm(base_size)))
     if support_h > 0:
-        msg.append("Высота стойки: {:.0f} мм".format(internal_to_mm(support_h)))
+        msg.append(tr("supports_height", height=internal_to_mm(support_h)))
     else:
-        msg.append("!!! Высота стойки = 0 (не рассчитана)")
+        msg.append(tr("supports_height_zero"))
     msg.append("")
     msg.append(_h_diag)
     msg.extend(
         [
             "",
-            "Удалить старых стоек: {}".format(len(old_ids)),
+            tr("supports_delete_old", count=len(old_ids)),
             "",
-            "Продолжить?",
+            tr("continue"),
         ]
     )
     confirm = forms.alert(
@@ -380,7 +367,7 @@ try:
         raise Exception(_CANCELLED)
 
     # Размещение
-    with revit.Transaction("Разместить стойки"):
+    with revit.Transaction(tr("tx_place_supports")):
         if not sym_support.IsActive:
             sym_support.Activate()
             doc.Regenerate()
@@ -419,14 +406,14 @@ try:
 
         set_string_param(floor, "FP_ID_Стоек", ";".join(placed_ids))
 
-    report = "Готово.\n\nСтоек: {}\nУдалено старых: {}".format(s_count, deleted)
-    report += "\nОсь нижних: {}".format(lower_axis)
+    report = tr("supports_done", count=s_count, deleted=deleted)
+    report += "\n" + tr("supports_axis", axis=lower_axis)
     if support_h > 0:
-        report += "\nВысота стойки: {:.0f} мм".format(internal_to_mm(support_h))
+        report += "\n" + tr("supports_height", height=internal_to_mm(support_h))
     forms.alert(report, title=TITLE)
 
 except Exception as ex:
     if str(ex) == _CANCELLED:
         pass
     else:
-        forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

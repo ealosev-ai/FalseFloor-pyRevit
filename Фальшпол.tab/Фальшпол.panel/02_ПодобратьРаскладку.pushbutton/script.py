@@ -15,6 +15,7 @@ from floor_exact import (  # type: ignore
     internal_to_mm,
 )
 from floor_grid import redraw_grid_for_floor  # type: ignore
+from floor_i18n import tr  # type: ignore
 from floor_ui import (  # type: ignore
     TITLE_SHIFT,
     get_shift_quality_status,
@@ -31,7 +32,7 @@ _CANCELLED = "@@CANCELLED@@"
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(
-            "Открой план. Применение смещения выполняется на плане.",
+            tr("open_plan_shift"),
             title=TITLE_SHIFT,
         )
         raise Exception("Active view is not a plan")
@@ -41,7 +42,7 @@ try:
         ref = uidoc.Selection.PickObject(
             ObjectType.Element,
             pick_filter,
-            "Выберите перекрытие фальшпола или его часть",
+            tr("pick_floor_or_part_prompt"),
         )
     except OperationCanceledException:
         raise Exception(_CANCELLED)
@@ -50,7 +51,7 @@ try:
     floor = get_source_floor(picked_el)
 
     if not floor:
-        raise Exception("Не удалось определить исходное перекрытие")
+        raise Exception(tr("source_floor_not_found"))
 
     # Запоминаем текущее смещение до оптимизации
     cur_sx = get_double_param(floor, "FP_Смещение_X")
@@ -84,59 +85,54 @@ try:
     delta_x = abs(best["shift_x_mm"] - cur_sx_mm)
     delta_y = abs(best["shift_y_mm"] - cur_sy_mm)
     if delta_x < 2.0 and delta_y < 2.0:
-        preview_lines.append(
-            "Текущее смещение X={:.0f}, Y={:.0f} мм — уже оптимально.".format(
-                cur_sx_mm, cur_sy_mm
-            )
-        )
+        preview_lines.append(tr("shift_current_optimal", x=cur_sx_mm, y=cur_sy_mm))
     else:
+        preview_lines.append(tr("shift_current", x=cur_sx_mm, y=cur_sy_mm))
         preview_lines.append(
-            "Текущее: X={:.0f}, Y={:.0f} мм".format(cur_sx_mm, cur_sy_mm)
-        )
-        preview_lines.append(
-            "Лучшее:  X={:.0f}, Y={:.0f} мм".format(
-                best["shift_x_mm"], best["shift_y_mm"]
-            )
+            tr("shift_best", x=best["shift_x_mm"], y=best["shift_y_mm"])
         )
     preview_lines.append("")
 
     # Статус и ключевые цифры
-    preview_lines.append("Статус: {}".format(get_shift_quality_status(best)))
+    preview_lines.append(tr("shift_status", status=get_shift_quality_status(best)))
     preview_lines.append(
-        "Полных: {} | Подрезок: {} | Сложных: {}".format(
-            best["full_count"],
-            best["viable_simple_count"],
-            best["complex_count"],
+        tr(
+            "shift_preview_counts",
+            full=best["full_count"],
+            simple=best["viable_simple_count"],
+            complex=best["complex_count"],
         )
     )
 
     nv = best["non_viable_count"]
     if nv > 0:
-        preview_lines.append("Немонтируемых (<100 мм): {}".format(nv))
+        preview_lines.append(tr("shift_non_viable", count=nv))
 
     gth = best.get("unsplit_holes", 0)
     if gth > 0:
-        preview_lines.append("!! Колонн без разреза сеткой: {}".format(gth))
+        preview_lines.append(tr("shift_unsplit_holes", count=gth))
 
     nec = best.get("near_edge_count", 0)
     if nec > 0:
-        preview_lines.append("Линий сетки у края колонн: {}".format(nec))
+        preview_lines.append(tr("shift_near_columns", count=nec))
 
     preview_lines.append(
-        "Мин. подрезка: {:.0f} мм | Типов: {}".format(
-            best["min_viable_cut_mm"], best["unique_sizes"]
+        tr(
+            "shift_min_types",
+            min_cut=best["min_viable_cut_mm"],
+            types=best["unique_sizes"],
         )
     )
     preview_lines.append(
-        "Площадь подрезок: {}".format(format_area_m2(best["total_cut_area_mm2"]))
+        tr("cut_area", area=format_area_m2(best["total_cut_area_mm2"]))
     )
 
     preview_lines.append("")
     total_var = search.get("total_count", "?")
-    preview_lines.append("Проверено вариантов: {}".format(total_var))
+    preview_lines.append(tr("shift_checked", count=total_var))
 
     apply_answer = forms.alert(
-        "\n".join(preview_lines) + "\n\nПрименить и перерисовать сетку?",
+        "\n".join(preview_lines) + "\n\n" + tr("shift_apply_prompt"),
         title=TITLE_SHIFT,
         yes=True,
         no=True,
@@ -145,58 +141,55 @@ try:
     if not apply_answer:
         raise Exception(_CANCELLED)
 
-    with revit.Transaction("Применить лучшее смещение фальшпола"):
+    with revit.Transaction(tr("tx_apply_shift")):
         ok_x = set_double_param(floor, "FP_Смещение_X", best["shift_x_internal"])
         ok_y = set_double_param(floor, "FP_Смещение_Y", best["shift_y_internal"])
 
         if not ok_x or not ok_y:
-            raise Exception(
-                "Не удалось записать FP_Смещение_X / FP_Смещение_Y. Проверь тип параметров и доступность записи."
-            )
+            raise Exception(tr("shift_write_failed"))
 
-    grid_result = redraw_grid_for_floor(floor, view, "Перерисовать сетку фальшпола")
+    grid_result = redraw_grid_for_floor(floor, view, tr("tx_redraw_grid"))
 
     done_lines = []
-    done_lines.append("Готово. Смещение применено.")
+    done_lines.append(tr("shift_done"))
     done_lines.append("")
     done_lines.append(
-        "X = {:.0f} мм, Y = {:.0f} мм".format(best["shift_x_mm"], best["shift_y_mm"])
+        tr("shift_applied_xy", x=best["shift_x_mm"], y=best["shift_y_mm"])
     )
-    done_lines.append("Статус: {}".format(get_shift_quality_status(best)))
+    done_lines.append(tr("shift_status", status=get_shift_quality_status(best)))
     done_lines.append("")
-    done_lines.append("Полных: {}".format(best["full_count"]))
-    done_lines.append("Подрезок (>=100 мм): {}".format(best["viable_simple_count"]))
-    done_lines.append("Сложных (>=100 мм): {}".format(best["complex_count"]))
+    done_lines.append(tr("tiles_full", count=best["full_count"]).strip())
+    done_lines.append(tr("shift_simple_viable", count=best["viable_simple_count"]))
+    done_lines.append(tr("shift_complex_viable", count=best["complex_count"]))
     nv = best["non_viable_count"]
     if nv > 0:
-        done_lines.append("Немонтируемых (<100 мм): {}".format(nv))
+        done_lines.append(tr("shift_non_viable", count=nv))
     gth = best.get("unsplit_holes", 0)
     if gth > 0:
-        done_lines.append("!! Колонн без разреза сеткой: {}".format(gth))
+        done_lines.append(tr("shift_unsplit_holes", count=gth))
     nec = best.get("near_edge_count", 0)
     if nec > 0:
-        done_lines.append("Линий сетки у края колонн: {}".format(nec))
+        done_lines.append(tr("shift_near_columns", count=nec))
     done_lines.append("")
-    done_lines.append("Мин. подрезка: {:.0f} мм".format(best["min_viable_cut_mm"]))
-    done_lines.append("Типов подрезок: {}".format(best["unique_sizes"]))
     done_lines.append(
-        "Площадь подрезок: {}".format(format_area_m2(best["total_cut_area_mm2"]))
+        tr(
+            "shift_min_types",
+            min_cut=best["min_viable_cut_mm"],
+            types=best["unique_sizes"],
+        )
     )
+    done_lines.append(tr("cut_area", area=format_area_m2(best["total_cut_area_mm2"])))
 
     if grid_result:
         done_lines.append("")
-        done_lines.append("Сетка перерисована.")
-        done_lines.append(
-            "Удалено старых линий: {}".format(grid_result["deleted_count"])
-        )
-        done_lines.append(
-            "Создано новых линий: {}".format(grid_result["created_count"])
-        )
+        done_lines.append(tr("shift_grid_redrawn"))
+        done_lines.append(tr("deleted_old_lines", count=grid_result["deleted_count"]))
+        done_lines.append(tr("created_new_lines", count=grid_result["created_count"]))
 
     forms.alert("\n".join(done_lines), title=TITLE_SHIFT)
 
 except Exception as ex:
     if str(ex) == _CANCELLED:
-        forms.alert("Операция отменена.", title=TITLE_SHIFT)
+        forms.alert(tr("operation_cancelled"), title=TITLE_SHIFT)
     else:
-        forms.alert("Ошибка:\n{}".format(str(ex)), title=TITLE_SHIFT)
+        forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_SHIFT)

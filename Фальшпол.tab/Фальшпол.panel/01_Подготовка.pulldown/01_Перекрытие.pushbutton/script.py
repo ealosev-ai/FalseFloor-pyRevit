@@ -10,6 +10,7 @@ from floor_common import (  # type: ignore
     set_double_param,
     set_string_param,
 )
+from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_PREPARE  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
@@ -32,7 +33,7 @@ def ask_mm_value(title, prompt, default_value):
         return float(text_val)
     except Exception:
         forms.alert(
-            "Не удалось преобразовать '{}' в число.".format(text_val),
+            tr("invalid_number_fmt", value=text_val),
             title=title,
         )
         return None
@@ -44,40 +45,40 @@ try:
     ref = uidoc.Selection.PickObject(
         ObjectType.Element,
         pick_filter,
-        "Выберите управляющее перекрытие фальшпола",
+        tr("pick_floor_prompt"),
     )
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
 
     if not floor or not floor.Category:
-        forms.alert("Элемент не найден или без категории.", title=TITLE_PREPARE)
+        forms.alert(tr("invalid_element"), title=TITLE_PREPARE)
         raise Exception("Invalid element")
 
     if get_id_value(floor.Category.Id) != int(BuiltInCategory.OST_Floors):
-        forms.alert("Выбранный элемент не является перекрытием.", title=TITLE_PREPARE)
+        forms.alert(tr("element_not_floor"), title=TITLE_PREPARE)
         raise Exception("Element is not a floor")
 
     # 2. Базовая точка (клик на плане)
-    base_point = uidoc.Selection.PickPoint("Укажите базовую точку раскладки")
+    base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))
 
     # 3. Ввод шага плитки
-    step_x_mm = ask_mm_value(TITLE_PREPARE, "Введите шаг X, мм", 600)
+    step_x_mm = ask_mm_value(TITLE_PREPARE, tr("prompt_step_x"), 600)
     if step_x_mm is None:
         raise OperationCanceledException()
 
-    step_y_mm = ask_mm_value(TITLE_PREPARE, "Введите шаг Y, мм", 600)
+    step_y_mm = ask_mm_value(TITLE_PREPARE, tr("prompt_step_y"), 600)
     if step_y_mm is None:
         raise OperationCanceledException()
 
     # 3b. Ввод высоты фальшпола
-    height_mm = ask_mm_value(TITLE_PREPARE, "Введите высоту фальшпола, мм", 500)
+    height_mm = ask_mm_value(TITLE_PREPARE, tr("prompt_floor_height"), 500)
     if height_mm is None:
         raise OperationCanceledException()
 
     # 4. Запись параметров (смещение = 0, будет найдено кнопкой 04)
     missing_params = []
 
-    with revit.Transaction("Подготовить зону фальшпола"):
+    with revit.Transaction(tr("tx_prepare_floor")):
         pairs = [
             ("FP_Шаг_X", mm_to_internal(step_x_mm)),
             ("FP_Шаг_Y", mm_to_internal(step_y_mm)),
@@ -98,35 +99,30 @@ try:
     # 5. Отчёт
     if missing_params:
         forms.alert(
-            "Зона подготовлена, но не все параметры записаны.\n\n"
-            "ID перекрытия: {}\n"
-            "Шаг: {} x {} мм\n"
-            "Высота: {} мм\n\n"
-            "Не записаны:\n- {}".format(
-                get_id_value(floor.Id),
-                step_x_mm,
-                step_y_mm,
-                height_mm,
-                "\n- ".join(missing_params),
+            tr(
+                "prepare_partial",
+                floor_id=get_id_value(floor.Id),
+                step_x=step_x_mm,
+                step_y=step_y_mm,
+                height=height_mm,
+                missing="\n- ".join(missing_params),
             ),
             title=TITLE_PREPARE,
         )
     else:
         forms.alert(
-            "Готово.\n\n"
-            "ID перекрытия: {}\n"
-            "Шаг: {} x {} мм\n"
-            "Высота фальшпола: {} мм\n"
-            "Смещение: 0 (будет найдено кнопкой 04)\n"
-            "База записана.\n"
-            "Статус: Подготовлено".format(
-                get_id_value(floor.Id), step_x_mm, step_y_mm, height_mm
+            tr(
+                "prepare_done",
+                floor_id=get_id_value(floor.Id),
+                step_x=step_x_mm,
+                step_y=step_y_mm,
+                height=height_mm,
             ),
             title=TITLE_PREPARE,
         )
 
 except OperationCanceledException:
-    forms.alert("Операция отменена.", title=TITLE_PREPARE)
+    forms.alert(tr("operation_cancelled"), title=TITLE_PREPARE)
 
 except Exception as ex:
-    forms.alert("Ошибка:\n{}".format(str(ex)), title=TITLE_PREPARE)
+    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_PREPARE)

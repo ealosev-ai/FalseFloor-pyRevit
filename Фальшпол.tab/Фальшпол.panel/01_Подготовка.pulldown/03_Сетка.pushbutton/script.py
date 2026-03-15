@@ -5,6 +5,7 @@ from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import FloorOrPartSelectionFilter, get_source_floor  # type: ignore
 from floor_grid import redraw_grid_for_floor  # type: ignore
+from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_GRID  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
@@ -17,7 +18,7 @@ try:
     # 1. Проверка вида
     if not isinstance(view, ViewPlan):
         forms.alert(
-            "Открой план, чтобы построить и перерисовать сетку линиями детализации.",
+            tr("open_plan_grid"),
             title=TITLE_GRID,
         )
         raise Exception("Active view is not a plan")
@@ -27,7 +28,7 @@ try:
     ref = uidoc.Selection.PickObject(
         ObjectType.Element,
         pick_filter,
-        "Выберите перекрытие фальшпола или его часть",
+        tr("pick_floor_or_part_prompt"),
     )
 
     picked_el = doc.GetElement(ref.ElementId)
@@ -35,8 +36,7 @@ try:
 
     if not floor:
         forms.alert(
-            "Не удалось определить исходное перекрытие.\n"
-            "Выбери перекрытие или часть, созданную из него.",
+            tr("grid_source_not_found"),
             title=TITLE_GRID,
         )
         raise Exception("Source floor not found")
@@ -44,33 +44,27 @@ try:
     grid_result = redraw_grid_for_floor(
         floor,
         view,
-        "Построить сетку фальшпола",
+        tr("tx_redraw_grid"),
         update_style=True,
     )
 
     # 8. Отчёт
     forms.alert(
-        "Готово.\n\n"
-        "ID перекрытия: {}\n"
-        "Шаг X: {:.1f} мм\n"
-        "Шаг Y: {:.1f} мм\n"
-        "Смещение X: {:.1f} мм\n"
-        "Смещение Y: {:.1f} мм\n"
-        "Удалено старых линий: {}\n"
-        "Создано новых линий: {}".format(
-            floor.Id.Value,
-            grid_result["step_x"] * 304.8,
-            grid_result["step_y"] * 304.8,
-            grid_result["shift_x"] * 304.8,
-            grid_result["shift_y"] * 304.8,
-            grid_result["deleted_count"],
-            grid_result["created_count"],
+        tr(
+            "grid_done",
+            floor_id=floor.Id.Value,
+            step_x=grid_result["step_x"] * 304.8,
+            step_y=grid_result["step_y"] * 304.8,
+            shift_x=grid_result["shift_x"] * 304.8,
+            shift_y=grid_result["shift_y"] * 304.8,
+            deleted=grid_result["deleted_count"],
+            created=grid_result["created_count"],
         ),
         title=TITLE_GRID,
     )
 
 except OperationCanceledException:
-    forms.alert("Операция отменена.", title=TITLE_GRID)
+    forms.alert(tr("operation_cancelled"), title=TITLE_GRID)
 
 except Exception as ex:
-    forms.alert("Ошибка:\n{}".format(str(ex)), title=TITLE_GRID)
+    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_GRID)

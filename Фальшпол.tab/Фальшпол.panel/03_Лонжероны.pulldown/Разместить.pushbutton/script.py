@@ -46,6 +46,7 @@ from floor_exact import (  # type: ignore
     path64_to_points_mm,
 )
 from floor_grid import get_bbox_xy  # type: ignore
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 # ─── Константы ────────────────────────────────────────────
@@ -54,7 +55,7 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "06 Лонжероны"
+TITLE = tr("title_longerons")
 FAMILY_NAME = "ФП_Лонжерон"
 TOL = 1e-6
 _MIN_PIECE = 0.005  # ~1.5 мм
@@ -358,20 +359,20 @@ def _find_symbols(family_name):
 
 def _pick_floor():
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise _Cancel()
     try:
         ref = uidoc.Selection.PickObject(
             ObjectType.Element,
             FloorOrPartSelectionFilter(),
-            "Выберите перекрытие фальшпола",
+            tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
         raise _Cancel()
     el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(el)
     if not floor:
-        raise Exception("Не удалось определить исходное перекрытие")
+        raise Exception(tr("source_floor_not_found"))
     return floor
 
 
@@ -379,45 +380,45 @@ def _ask_config(floor):
     """→ (dir_x, sym_upper, sym_lower, max_len, lower_step)."""
     v, h = _read_grid_lines(floor)
     if not v and not h:
-        forms.alert("Нет сетки. Сначала 03_Сетка.", title=TITLE)
+        forms.alert(tr("long_no_grid"), title=TITLE)
         raise _Cancel()
 
     sym_dict = _find_symbols(FAMILY_NAME)
     if not sym_dict:
-        forms.alert("Семейство '{}' не найдено.".format(FAMILY_NAME), title=TITLE)
+        forms.alert(tr("family_not_found_fmt", family=FAMILY_NAME), title=TITLE)
         raise _Cancel()
 
     direction = forms.CommandSwitchWindow.show(
-        ["X (горизонтально)", "Y (вертикально)"],
-        message="Направление верхних лонжеронов:",
+        [tr("long_dir_x"), tr("long_dir_y")],
+        message=tr("long_dir_message"),
     )
     if not direction:
         raise _Cancel()
     dir_x = direction.startswith("X")
 
     if dir_x and not h:
-        forms.alert("Нет горизонтальных линий сетки.", title=TITLE)
+        forms.alert(tr("long_no_h_grid"), title=TITLE)
         raise _Cancel()
     if not dir_x and not v:
-        forms.alert("Нет вертикальных линий сетки.", title=TITLE)
+        forms.alert(tr("long_no_v_grid"), title=TITLE)
         raise _Cancel()
 
     names = sorted(sym_dict.keys())
     if len(names) == 1:
         sym_upper = sym_lower = list(sym_dict.values())[0]
     else:
-        n = forms.CommandSwitchWindow.show(names, message="Типоразмер ВЕРХНИХ:")
+        n = forms.CommandSwitchWindow.show(names, message=tr("long_upper_type"))
         if not n:
             raise _Cancel()
         sym_upper = sym_dict[n]
-        n = forms.CommandSwitchWindow.show(names, message="Типоразмер НИЖНИХ:")
+        n = forms.CommandSwitchWindow.show(names, message=tr("long_lower_type"))
         if not n:
             raise _Cancel()
         sym_lower = sym_dict[n]
 
     max_len_default = int(round(get_mm_param(floor, "FP_Макс_Длина_Лонжерона", 4000.0)))
     s = forms.ask_for_string(
-        prompt="Макс. длина (мм):",
+        prompt=tr("prompt_max_length"),
         default=str(max_len_default),
         title=TITLE,
     )
@@ -426,12 +427,12 @@ def _ask_config(floor):
     try:
         max_len = mm_to_internal(float(s.strip()))
     except ValueError:
-        forms.alert("Некорректное число.", title=TITLE)
+        forms.alert(tr("invalid_number"), title=TITLE)
         raise _Cancel()
 
     lower_step_default = int(round(get_mm_param(floor, "FP_Шаг_Нижних", 1200.0)))
     s = forms.ask_for_string(
-        prompt="Шаг нижних (мм):",
+        prompt=tr("prompt_lower_step"),
         default=str(lower_step_default),
         title=TITLE,
     )
@@ -440,10 +441,10 @@ def _ask_config(floor):
     try:
         lower_step = mm_to_internal(float(s.strip()))
     except ValueError:
-        forms.alert("Некорректное число.", title=TITLE)
+        forms.alert(tr("invalid_number"), title=TITLE)
         raise _Cancel()
     if lower_step <= TOL:
-        forms.alert("Шаг должен быть > 0.", title=TITLE)
+        forms.alert(tr("step_positive"), title=TITLE)
         raise _Cancel()
 
     return dir_x, sym_upper, sym_lower, max_len, lower_step
@@ -479,23 +480,19 @@ def _place_layer(segs, symbol, level, z0, dz, prefix, dir_label, max_len):
 def main():
     floor = _pick_floor()
 
-    with revit.Transaction("Нормализовать размеры лонжеронов"):
+    with revit.Transaction(tr("tx_normalize_longeron_sizes")):
         normalize_legacy_mm_param(floor, "FP_Шаг_Нижних")
         normalize_legacy_mm_param(floor, "FP_Макс_Длина_Лонжерона")
 
     missing = [n for n in REQUIRED_FLOOR_PARAMS if floor.LookupParameter(n) is None]
     if missing:
-        forms.alert("Нет параметров:\n" + "\n".join(missing), title=TITLE)
+        forms.alert(tr("missing_params", params="\n".join(missing)), title=TITLE)
         raise _Cancel()
 
     tile_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
     if not tile_ids:
         proceed = forms.alert(
-            "Плитки ещё не размещены.\n\n"
-            "Лонжероны будут построены по высоте фальшпола и толщине семейства ФП_Плитка.\n"
-            "Если потом изменится тип или толщина плитки, лонжероны нужно будет перестроить.\n\n"
-            "Сначала рекомендуется разместить плитки, затем лонжероны.\n\n"
-            "Продолжить размещение лонжеронов сейчас?",
+            tr("long_tiles_missing"),
             title=TITLE,
             yes=True,
             no=True,
@@ -559,16 +556,14 @@ def main():
 
     if total_h <= TOL:
         forms.alert(
-            "FP_Высота_Фальшпола = 0 мм.\n"
-            "Сначала задай высоту фальшпола (Подготовка) и повтори.",
+            tr("floor_height_zero"),
             title=TITLE,
         )
         raise _Cancel()
 
     if tile_t <= TOL:
         forms.alert(
-            "Не удалось определить толщину плитки (FP_Толщина_Плитки / ФП_Плитка:FP_Толщина).\n"
-            "Сначала размести плитки или проверь параметры семейства ФП_Плитка.",
+            tr("tile_thickness_missing"),
             title=TITLE,
         )
         raise _Cancel()
@@ -578,9 +573,7 @@ def main():
         support_h = total_h - tile_t - ph_upper - ph_lower
         if support_h < -TOL:
             forms.alert(
-                "Конфликт высот: FP_Высота_Фальшпола меньше суммы толщин\n"
-                "(плитка + верхний профиль + нижний профиль).\n"
-                "Увеличь FP_Высота_Фальшпола или проверь профили.",
+                tr("height_conflict_full"),
                 title=TITLE,
             )
             raise _Cancel()
@@ -619,7 +612,7 @@ def main():
     try:
         zone = get_exact_zone_for_floor(doc, floor)
     except Exception as ex:
-        forms.alert("Контур не получен:\n{}".format(ex), title=TITLE)
+        forms.alert(tr("contour_not_received", error=str(ex)), title=TITLE)
         raise _Cancel()
 
     # Граница клиппинга = контур − 5 мм
@@ -735,7 +728,7 @@ def main():
     lower_segs, short_l = _filter_short(lower_segs, min_seg)
 
     if not upper_segs and not lower_segs:
-        forms.alert("Нет лонжеронов для размещения.", title=TITLE)
+        forms.alert(tr("no_longerons_to_place"), title=TITLE)
         raise _Cancel()
 
     # ── Подтверждение ──
@@ -744,16 +737,14 @@ def main():
     old_ids = list(set(old_upper + old_lower))
 
     msg = [
-        "Верхних: {}".format(len(upper_segs)),
-        "Нижних: {} ({} позиций)".format(len(lower_segs), len(lower_positions)),
-        "Шаг нижних: {:.0f} мм".format(internal_to_mm(lower_step)),
-        "Макс. длина: {:.0f} мм".format(internal_to_mm(max_len)),
-        "Зазор: {} мм".format(MOUNTING_GAP_MM),
+        tr("long_upper_count", count=len(upper_segs)),
+        tr("long_lower_count", count=len(lower_segs), positions=len(lower_positions)),
+        tr("long_lower_step", step=internal_to_mm(lower_step)),
+        tr("long_max_length", length=internal_to_mm(max_len)),
+        tr("long_gap", gap=MOUNTING_GAP_MM),
         "",
-        "z0: {:.0f} мм".format(internal_to_mm(z0)),
-        "dz верх: {:.0f}, dz низ: {:.0f} мм".format(
-            internal_to_mm(dz_upper), internal_to_mm(dz_lower)
-        ),
+        tr("long_z0", z=internal_to_mm(z0)),
+        tr("long_dz", upper=internal_to_mm(dz_upper), lower=internal_to_mm(dz_lower)),
     ]
     if total_h == 0:
         msg.append("!!! FP_Высота_Фальшпола = 0")
@@ -762,14 +753,14 @@ def main():
     if contour_skipped:
         msg.append("!!! Наклонных рёбер: {}".format(contour_skipped))
     if short_u or short_l:
-        msg.append("Коротких: верх={}, низ={}".format(short_u, short_l))
-    msg.extend(["", "Удалить старых: {}".format(len(old_ids)), "", "Продолжить?"])
+        msg.append(tr("long_short_count", upper=short_u, lower=short_l))
+    msg.extend(["", tr("deleted_old", count=len(old_ids)), "", tr("continue")])
 
     if not forms.alert("\n".join(msg), title=TITLE, yes=True, no=True):
         raise _Cancel()
 
     # ── Размещение ──
-    with revit.Transaction("Разместить лонжероны"):
+    with revit.Transaction(tr("tx_place_longerons")):
         if not sym_upper.IsActive:
             sym_upper.Activate()
         if not sym_lower.IsActive:
@@ -815,9 +806,7 @@ def main():
         _set_param(floor, "FP_Направление_Верхних", "X" if dir_x else "Y")
 
     forms.alert(
-        "Готово.\nВерхних: {}\nНижних: {}\nУдалено: {}".format(
-            len(upper_ids), len(lower_ids), deleted
-        ),
+        tr("long_done", upper=len(upper_ids), lower=len(lower_ids), deleted=deleted),
         title=TITLE,
     )
 
@@ -827,4 +816,4 @@ try:
 except _Cancel:
     pass
 except Exception as ex:
-    forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
