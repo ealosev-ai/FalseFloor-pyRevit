@@ -14,6 +14,7 @@ from Autodesk.Revit.DB import (  # type: ignore
     StorageType,
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter  # type: ignore
+from floor_i18n import tr  # type: ignore
 from pyrevit import revit  # type: ignore
 
 doc = revit.doc
@@ -151,7 +152,7 @@ def read_floor_grid_params(floor):
     missing = [name for name, val in params.items() if val is None]
     if missing:
         raise Exception(
-            "Не удалось прочитать параметры:\n- {}".format("\n- ".join(missing))
+            tr("params_read_error", missing="\n- ".join(missing))
         )
 
     return {

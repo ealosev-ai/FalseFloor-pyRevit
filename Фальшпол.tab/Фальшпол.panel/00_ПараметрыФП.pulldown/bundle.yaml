@@ -3,3 +3,8 @@ tooltip: >-
   Управление FP_-параметрами фальшпола.
   Актуализация в проекте и семействах.
   Legacy параметры не удаляются автоматически.
+layout:
+  - Проект.pushbutton
+  - Семейства.pushbutton
+  - UILanguage.pushbutton
+  - Очистить.pushbutton

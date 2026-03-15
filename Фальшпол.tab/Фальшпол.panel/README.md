@@ -64,6 +64,7 @@
 
 - Параметры проекта: создаёт/обновляет обязательные FP\_\* параметры в проекте.
 - Параметры семейств: создаёт/обновляет FP\_\* параметры в семействах.
+- Язык UI: переключает язык runtime-интерфейса FalseFloor (Auto/RU/EN).
 - Очистить параметры: удаляет привязки параметров.
 
 #### 1 Подготовка -> Перекрытие
@@ -292,6 +293,7 @@ Why tiles come before stringers/supports:
 
 - Project Parameters: creates/updates required FP\_\* project parameters.
 - Family Parameters: creates/updates required FP\_\* family parameters.
+- UI Language: switches FalseFloor runtime UI language (Auto/RU/EN).
 - Clear Parameters: removes parameter bindings.
 
 #### 1 Prepare -> Slab

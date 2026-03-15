@@ -18,10 +18,11 @@ from Autodesk.Revit.DB import (  # type: ignore
     TypeBinding,
 )
 from pyrevit import forms, revit  # type: ignore
+from floor_i18n import tr  # type: ignore
 
 doc = revit.doc
 app = doc.Application
-TITLE = "00 Параметры ФП"
+TITLE = tr("proj_title")
 
 # ── Определения параметров ───────────────────────────────
 # (имя, StorageType, описание, категории_builtin, instance=True/type=False)
@@ -415,58 +416,48 @@ try:
 
     if not has_actions:
         msg = [
-            "Все {} актуальных параметров уже есть в проекте с правильным типом.".format(
-                len(PARAM_DEFS)
-            )
+            tr("proj_all_bound", count=len(PARAM_DEFS))
         ]
         if obsolete:
             msg.extend(
                 [
                     "",
-                    "Обнаружены legacy FP_ параметры (не удаляются автоматически): {}".format(
-                        len(obsolete)
-                    ),
+                    tr("proj_legacy_found", count=len(obsolete)),
                     "  {}".format(", ".join(sorted(obsolete))),
                 ]
             )
             msg.append("")
-            msg.append(
-                "Для удаления legacy используй отдельную кнопку 'Вычистить FP_ (опасно)'."
-            )
+            msg.append(tr("proj_legacy_hint"))
         forms.alert("\n".join(msg), title=TITLE)
     else:
         parts = []
         if already:
-            parts.append("Уже есть (ОК): {}".format(len(already)))
+            parts.append(tr("proj_already_ok", count=len(already)))
         if obsolete:
             parts.append(
-                "Legacy (не будут удалены): {}\n  {}".format(
-                    len(obsolete), ", ".join(sorted(obsolete))
-                )
+                tr("proj_legacy_not_removed", count=len(obsolete), names=", ".join(sorted(obsolete)))
             )
         if wrong_type:
             parts.append(
-                "С неправильным типом (Number→Length): {}\n  {}".format(
-                    len(wrong_type), ", ".join(sorted(wrong_type))
-                )
+                tr("proj_wrong_type_list", count=len(wrong_type), names=", ".join(sorted(wrong_type)))
             )
         new_count = len(needed) - len(wrong_type)
         if new_count > 0:
-            parts.append("Новых: {}".format(new_count))
+            parts.append(tr("proj_new_count", count=new_count))
 
         confirm = forms.alert(
             "\n".join(parts)
-            + "\n\nБудут только добавлены/обновлены актуальные параметры. Продолжить?",
+            + "\n\n" + tr("proj_confirm_update"),
             title=TITLE,
             yes=True,
             no=True,
         )
         if not confirm:
-            raise Exception("Отмена")
+            raise Exception("cancel")
 
         # ── Шаг 1: удалить привязки параметров с неправильным типом ──
         if wrong_type:
-            with revit.Transaction("Удалить FP_ параметры (неправильный тип)"):
+            with revit.Transaction("Remove FP_ wrong-type params"):
                 bm = doc.ParameterBindings
                 for name in wrong_type:
                     defn = existing.get(name)
@@ -498,7 +489,7 @@ try:
             app.SharedParametersFilename = temp_path
             tmp_sp_file = app.OpenSharedParameterFile()
             if not tmp_sp_file:
-                raise Exception("Не удалось создать временный файл параметров")
+                raise Exception(tr("proj_temp_file_failed"))
 
             GROUP_NAME = "Фальшпол"
             dg = tmp_sp_file.Groups.Create(GROUP_NAME)
@@ -507,7 +498,7 @@ try:
             errors = []
             data_group_id = _get_data_group_id()
 
-            with revit.Transaction("Добавить FP_ параметры"):
+            with revit.Transaction("Add FP_ parameters"):
                 for name, st, desc, cats, is_instance in needed:
                     try:
                         param_type = _storage_to_param_type(st)
@@ -548,24 +539,22 @@ try:
         report = []
         if wrong_type:
             report.append(
-                "Пересоздано (Number→Length): {}".format(
-                    len([n for n in wrong_type if n in added])
-                )
+                tr("proj_recreated", count=len([n for n in wrong_type if n in added]))
             )
         new_added = [n for n in added if n not in wrong_type]
         if new_added:
-            report.append("Новых добавлено: {}".format(len(new_added)))
+            report.append(tr("proj_new_added", count=len(new_added)))
         if obsolete:
-            report.append("Legacy не тронуты: {}".format(len(obsolete)))
+            report.append(tr("proj_legacy_untouched", count=len(obsolete)))
         if errors:
             report.append("")
-            report.append("Ошибки ({}):".format(len(errors)))
+            report.append(tr("proj_errors_header", count=len(errors)))
             for e in errors:
                 report.append("  " + e)
         if not report:
-            report.append("Готово.")
+            report.append(tr("proj_done"))
         forms.alert("\n".join(report), title=TITLE)
 
 except Exception as ex:
-    if str(ex) != "Отмена":
-        forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+    if str(ex) != "cancel":
+        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

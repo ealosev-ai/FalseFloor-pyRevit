@@ -83,7 +83,7 @@ def format_shift_result_lines(result, index=None, area_text=None):
     )
 
     if area_text is None:
-        area_text = "{:.0f} мм²".format(result["total_cut_area_mm2"])
+        area_text = tr("area_mm2", area=result["total_cut_area_mm2"])
     lines.append(tr("cut_area", area=area_text))
 
     return lines
@@ -94,11 +94,8 @@ def format_shift_result_summary_line(result, index=None):
     if index is not None:
         prefix = "{}. ".format(index)
 
-    return (
-        "{prefix}{status} | X={x:.0f}, Y={y:.0f} мм | "
-        "сложн {complex} | недоп {unacc} | нежел {unw} | "
-        "micro {micro} | min {min_cut:.0f} мм"
-    ).format(
+    return tr(
+        "shift_summary_line",
         prefix=prefix,
         status=get_shift_quality_status(result),
         x=result["shift_x_mm"],
@@ -109,7 +106,7 @@ def format_shift_result_summary_line(result, index=None):
         micro=result.get("micro_fragment_count", 0),
         min_cut=result["min_viable_cut_mm"],
     ) + (
-        " [abs {:.0f}]".format(result.get("min_cut_all_mm", 0.0))
+        tr("shift_abs_min_suffix", value=result.get("min_cut_all_mm", 0.0))
         if result.get("min_cut_all_mm", 0.0) < result["min_viable_cut_mm"]
         else ""
     )

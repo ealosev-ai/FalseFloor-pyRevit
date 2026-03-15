@@ -10,13 +10,14 @@ from floor_common import (  # type: ignore
     load_reinforcement_zones,
     save_reinforcement_zones,
 )
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "Усиление: удалить"
+TITLE = tr("reinf_del_title")
 PARAM_ZONES = "FP_ЗоныУсиления_JSON"
 
 
@@ -26,20 +27,20 @@ class _Cancel(Exception):
 
 def _pick_floor():
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise _Cancel()
     try:
         ref = uidoc.Selection.PickObject(
             ObjectType.Element,
             FloorOrPartSelectionFilter(),
-            "Выберите перекрытие фальшпола",
+            tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
         raise _Cancel()
 
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
-        raise Exception("Не удалось определить исходное перекрытие")
+        raise Exception(tr("source_floor_not_found"))
     return floor
 
 
@@ -51,14 +52,15 @@ def _zone_label(zone):
     lo = len(zone.get("lower_ids") or [])
     su = len(zone.get("support_ids") or [])
     created = zone.get("created_at", "")
-    return "{} | {} | {} | верх={} низ={} стойки={} | {}".format(
-        zid,
-        mode,
-        layers,
-        up,
-        lo,
-        su,
-        created,
+    return tr(
+        "reinf_zone_label",
+        zid=zid,
+        mode=mode,
+        layers=layers,
+        upper=up,
+        lower=lo,
+        supports=su,
+        created=created,
     )
 
 
@@ -68,9 +70,7 @@ def main():
     p_zone = floor.LookupParameter(PARAM_ZONES)
     if p_zone is None:
         forms.alert(
-            "Не найден параметр {}.\nСначала запусти 00 Параметры ФП.".format(
-                PARAM_ZONES
-            ),
+            tr("reinf_param_not_found", param=PARAM_ZONES),
             title=TITLE,
         )
         raise _Cancel()
@@ -78,12 +78,12 @@ def main():
     data = load_reinforcement_zones(floor, default_version=1)
     zones = data.get("zones", [])
     if not zones:
-        forms.alert("Зоны усиления не найдены.", title=TITLE)
+        forms.alert(tr("reinf_zones_not_found"), title=TITLE)
         raise _Cancel()
 
     labels = [_zone_label(z) for z in zones]
     selected = forms.CommandSwitchWindow.show(
-        labels, message="Выбери зону для удаления:"
+        labels, message=tr("reinf_select_zone")
     )
     if not selected:
         raise _Cancel()
@@ -97,17 +97,17 @@ def main():
     all_ids = list(set([int(i) for i in upper_ids + lower_ids + support_ids]))
 
     msg = [
-        "Удалить зону {}".format(zone.get("zone_id", "?")),
-        "Верхних: {}".format(len(upper_ids)),
-        "Нижних: {}".format(len(lower_ids)),
-        "Стоек: {}".format(len(support_ids)),
+        tr("reinf_delete_zone", zid=zone.get("zone_id", "?")),
+        tr("reinf_upper_fmt", count=len(upper_ids)),
+        tr("reinf_lower_fmt", count=len(lower_ids)),
+        tr("reinf_supports_fmt", count=len(support_ids)),
         "",
-        "Продолжить?",
+        tr("continue"),
     ]
     if not forms.alert("\n".join(msg), title=TITLE, yes=True, no=True):
         raise _Cancel()
 
-    with revit.Transaction("Удалить зону усиления"):
+    with revit.Transaction(tr("tx_delete_reinf_zone")):
         deleted = 0
         for int_id in all_ids:
             try:
@@ -123,10 +123,7 @@ def main():
         save_reinforcement_zones(floor, data)
 
     forms.alert(
-        "Зона удалена.\nУдалено элементов: {}\nОсталось зон: {}".format(
-            deleted,
-            len(zones),
-        ),
+        tr("reinf_zone_deleted", deleted=deleted, remaining=len(zones)),
         title=TITLE,
     )
 
@@ -136,4 +133,4 @@ try:
 except _Cancel:
     pass
 except Exception as ex:
-    forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

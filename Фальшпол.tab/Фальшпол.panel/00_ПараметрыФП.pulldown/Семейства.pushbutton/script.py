@@ -20,10 +20,11 @@ from Autodesk.Revit.DB import (  # type: ignore
     Transaction,
 )
 from pyrevit import forms, revit  # type: ignore
+from floor_i18n import tr  # type: ignore
 
 doc = revit.doc
 app = doc.Application
-TITLE = "Параметры семейств ФП"
+TITLE = tr("fam_title")
 
 # ── Все параметры (имя, StorageType, описание, is_instance) ──
 FAMILY_PARAMS = [
@@ -205,12 +206,9 @@ def _ensure_sp_file():
     """Проверяет что файл общих параметров задан и существует."""
     sp_path = app.SharedParametersFilename
     if not sp_path:
-        raise Exception(
-            "Не задан файл общих параметров (ФОП).\n"
-            "Manage → Shared Parameters → укажите .txt файл."
-        )
+        raise Exception(tr("fam_sp_not_set"))
     if not os.path.exists(sp_path):
-        raise Exception("Файл общих параметров не найден:\n{}".format(sp_path))
+        raise Exception(tr("fam_sp_not_found", path=sp_path))
     return sp_path
 
 
@@ -224,7 +222,7 @@ def _get_or_create_definitions():
     """
     sp_file = app.OpenSharedParameterFile()
     if not sp_file:
-        raise Exception("Не удалось открыть файл общих параметров")
+        raise Exception(tr("fam_sp_open_failed"))
 
     group = None
     for g in sp_file.Groups:
@@ -255,7 +253,7 @@ def _get_or_create_definitions():
         if name in existing_defs:
             result[name] = (existing_defs[name], is_instance)
         else:
-            raise Exception("Определение '{}' не найдено после создания".format(name))
+            raise Exception(tr("fam_def_not_found", name=name))
 
     return result
 
@@ -268,14 +266,14 @@ def _load_fresh_definitions():
     """
     sp_file = app.OpenSharedParameterFile()
     if not sp_file:
-        raise Exception("Не удалось открыть файл общих параметров")
+        raise Exception(tr("fam_sp_open_failed"))
     group = None
     for g in sp_file.Groups:
         if _safe_name(g) == SP_GROUP_NAME:
             group = g
             break
     if group is None:
-        raise Exception("Группа '{}' не найдена в ФОП".format(SP_GROUP_NAME))
+        raise Exception(tr("fam_group_not_found", name=SP_GROUP_NAME))
 
     existing_defs = {}
     for d in group.Definitions:
@@ -441,7 +439,7 @@ def _process_family(family):
 
     fam_doc = doc.EditFamily(family)
     if not fam_doc:
-        return 0, 0, ["Не удалось открыть {}".format(family.Name)]
+        return 0, 0, [tr("fam_open_failed", name=family.Name)]
 
     try:
         ext_defs = _load_fresh_definitions()
@@ -451,7 +449,7 @@ def _process_family(family):
         obsolete = _find_obsolete_params(fam_doc, allowed)
         if obsolete:
             errors.append(
-                "Устаревшие (удалите вручную): {}".format(", ".join(sorted(obsolete)))
+                tr("fam_obsolete", names=", ".join(sorted(obsolete)))
             )
 
         if added:
@@ -485,20 +483,20 @@ def _run_in_family_editor():
     obsolete = _find_obsolete_params(doc, allowed)
 
     if not added and not obsolete and not errors:
-        forms.alert("Все FP_-параметры уже есть в семействе.", title=TITLE)
+        forms.alert(tr("fam_all_ok"), title=TITLE)
         return
 
     report = []
     if obsolete:
-        report.append("⚠ Устаревшие (удалите вручную после перепривязки геометрии):")
+        report.append(tr("fam_obsolete_header"))
         for n in sorted(obsolete):
             report.append("  - {}".format(n))
     if added:
-        report.append("Добавлено: {}".format(len(added)))
+        report.append(tr("fam_added", count=len(added)))
         for n in sorted(added):
             report.append("  + {}".format(n))
     if errors:
-        report.append("\nОшибки:")
+        report.append(tr("clean_errors_header"))
         for e in errors:
             report.append("  " + e)
     forms.alert("\n".join(report), title=TITLE)
@@ -509,7 +507,7 @@ def _run_in_project():
     families = _collect_fp_families()
     if not families:
         forms.alert(
-            "Нет загруженных семейств с префиксом «ФП_».",
+            tr("fam_no_families"),
             title=TITLE,
         )
         return
@@ -517,12 +515,10 @@ def _run_in_project():
     fam_info = []
     for f in families:
         params = _get_params_for_family(f.Name)
-        fam_info.append("  {} → {} парам.".format(f.Name, len(params)))
-    msg = "Найдено семейств: {}\n\n{}".format(
-        len(families), "\n".join(sorted(fam_info))
-    )
+        fam_info.append(tr("fam_params_info", name=f.Name, count=len(params)))
+    msg = tr("fam_found", count=len(families)) + "\n\n" + "\n".join(sorted(fam_info))
     confirm = forms.alert(
-        msg + "\n\nДобавить недостающие FP_-параметры?",
+        msg + "\n\n" + tr("fam_confirm_add"),
         title=TITLE,
         yes=True,
         no=True,
@@ -537,17 +533,17 @@ def _run_in_project():
         count_add, count_rem, errs = _process_family(fam)
         total_added += count_add
         if count_add > 0:
-            report_lines.append("  {} — добавлено {}".format(fam.Name, count_add))
+            report_lines.append(tr("fam_added_to", name=fam.Name, count=count_add))
         if errs:
             for e in errs:
                 report_lines.append("  {} — {}".format(fam.Name, e))
 
     if total_added == 0 and not report_lines:
-        summary = "Все параметры уже есть во всех семействах."
+        summary = tr("fam_all_present")
     else:
         parts = []
         if total_added:
-            parts.append("Добавлено: {}".format(total_added))
+            parts.append(tr("fam_added", count=total_added))
         if report_lines:
             parts.append("\n".join(report_lines))
         summary = "\n\n".join(parts)
@@ -571,6 +567,6 @@ except Exception as ex:
 
     if str(ex) != "cancel":
         forms.alert(
-            "Ошибка: {}\n\n{}".format(str(ex), traceback.format_exc()),
+            tr("error_fmt", error="{}\n\n{}".format(str(ex), traceback.format_exc())),
             title=TITLE,
         )

@@ -6,6 +6,7 @@ import re
 import tempfile
 
 from pyrevit import forms  # type: ignore
+from floor_i18n import tr  # type: ignore
 
 
 def _format_inline(text):
@@ -82,7 +83,7 @@ def main():
     panel_dir = os.path.dirname(os.path.dirname(__file__))
     readme_path = os.path.join(panel_dir, "README.md")
     if not os.path.exists(readme_path):
-        forms.alert("Файл README.md не найден рядом с панелью.", title="Справка")
+        forms.alert(tr("help_file_not_found"), title=tr("help_title"))
         return
 
     with io.open(readme_path, "r", encoding="utf-8") as readme_file:
@@ -92,7 +93,7 @@ def main():
 <html lang="ru">
 <head>
     <meta charset="utf-8">
-    <title>Справка: Фальшпол</title>
+    <title>{title}</title>
     <style>
         body {{ font-family: Segoe UI, sans-serif; margin: 24px auto; max-width: 980px; color: #202020; }}
         h1 {{ font-size: 24px; margin: 0 0 16px 0; }}
@@ -109,10 +110,11 @@ def main():
         }}
     </style>
 </head>
-<body>{}</body>
+<body>{body}</body>
 </html>
 """.format(
-        _markdown_to_html(content)
+        title=tr("help_html_title"),
+        body=_markdown_to_html(content),
     )
 
     temp_dir = os.path.join(tempfile.gettempdir(), "falsepol_help")

@@ -11,63 +11,64 @@ from floor_common import (  # type: ignore
     read_reinforcement_zone_ids,
     set_string_param,
 )
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "Удалить всё"
+TITLE = tr("del_title_all")
 _CANCELLED = "@@CANCELLED@@"
 
 # Параметры → какие ID хранят элементы фальшпола
 _PARAM_MAP = [
-    ("FP_ID_Стоек", "Стойки"),
-    ("FP_ID_Лонжеронов_Верх", "Лонжероны верх"),
-    ("FP_ID_Лонжеронов_Низ", "Лонжероны низ"),
-    ("FP_ID_Плиток", "Плитки"),
-    ("FP_ID_ЛинийСетки", "Линии сетки"),
-    ("FP_ID_МаркераБазы", "Маркер базы"),
-    ("FP_ID_ЛинийКонтура", "Линии контура"),
+    ("FP_ID_Стоек", "label_supports"),
+    ("FP_ID_Лонжеронов_Верх", "label_longerons_upper"),
+    ("FP_ID_Лонжеронов_Низ", "label_longerons_lower"),
+    ("FP_ID_Плиток", "label_tiles"),
+    ("FP_ID_ЛинийСетки", "label_grid_lines"),
+    ("FP_ID_МаркераБазы", "label_base_marker"),
+    ("FP_ID_ЛинийКонтура", "label_contour_lines"),
 ]
 
 _PARAM_ZONES = "FP_ЗоныУсиления_JSON"
 try:
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise Exception(_CANCELLED)
 
     ref = uidoc.Selection.PickObject(
         ObjectType.Element,
         FloorOrPartSelectionFilter(),
-        "Выберите перекрытие фальшпола",
+        tr("pick_floor_prompt"),
     )
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
-        raise Exception("Не удалось определить перекрытие")
+        raise Exception(tr("source_floor_not_found"))
 
     # Собираем все ID
     groups = []
     total = 0
-    for param_name, label in _PARAM_MAP:
+    for param_name, label_key in _PARAM_MAP:
         ids = parse_ids_from_string(get_string_param(floor, param_name))
         if ids:
-            groups.append((param_name, label, ids))
+            groups.append((param_name, tr(label_key), ids))
             total += len(ids)
 
     zone_ids = list(set(read_reinforcement_zone_ids(floor)))
     if zone_ids:
-        groups.append((_PARAM_ZONES, "Лонжероны усиления", zone_ids))
+        groups.append((_PARAM_ZONES, tr("label_reinf_longerons"), zone_ids))
         total += len(zone_ids)
 
     if total == 0:
-        forms.alert("Элементы фальшпола не найдены.", title=TITLE)
+        forms.alert(tr("del_elements_not_found"), title=TITLE)
         raise Exception(_CANCELLED)
 
-    msg_lines = ["Будет удалено элементов: {}".format(total), ""]
+    msg_lines = [tr("del_will_delete", count=total), ""]
     for _, label, ids in groups:
         msg_lines.append("  {} — {}".format(label, len(ids)))
-    msg_lines.extend(["", "Продолжить?"])
+    msg_lines.extend(["", tr("continue")])
 
     confirm = forms.alert(
         "\n".join(msg_lines),
@@ -78,7 +79,7 @@ try:
     if not confirm:
         raise Exception(_CANCELLED)
 
-    with revit.Transaction("Удалить всё (фальшпол)"):
+    with revit.Transaction(tr("tx_delete_all")):
         deleted = 0
         for param_name, label, ids in groups:
             for int_id in ids:
@@ -94,8 +95,8 @@ try:
 
         set_string_param(floor, _PARAM_ZONES, "")
 
-    forms.alert("Удалено: {} из {}".format(deleted, total), title=TITLE)
+    forms.alert(tr("del_done_all", deleted=deleted, total=total), title=TITLE)
 
 except Exception as ex:
     if str(ex) != _CANCELLED:
-        forms.alert("Ошибка: {}".format(ex), title=TITLE)
+        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

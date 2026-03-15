@@ -6,6 +6,7 @@
 
 - Introduced a shared runtime localization layer in lib/floor_i18n.py with RU/EN dictionaries.
 - Added automatic UI language detection (CurrentUICulture) and optional override via FALSEFLOOR_LANG.
+- Added a new Parameters command: UI Language (Auto/RU/EN) for runtime language switching.
 
 ### Changed
 

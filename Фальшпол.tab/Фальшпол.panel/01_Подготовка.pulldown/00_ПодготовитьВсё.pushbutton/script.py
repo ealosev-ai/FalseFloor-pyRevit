@@ -25,9 +25,10 @@ from floor_common import (  # type: ignore
     set_string_param,
 )
 from floor_grid import redraw_grid_for_floor  # type: ignore
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
-TITLE_PREPARE_ALL = "00 Подготовить всё"
+TITLE_PREPARE_ALL = tr("prepare_all_title")
 CONTOUR_STYLE_NAME = "ФП_Контур"
 CONTOUR_COLOR = Color(0, 255, 0)
 
@@ -51,7 +52,7 @@ def ask_mm_value(title, prompt, default_value):
         return float(text_val)
     except Exception:
         forms.alert(
-            "Не удалось преобразовать '{}' в число.".format(text_val),
+            tr("invalid_number_fmt", value=text_val),
             title=title,
         )
         return None
@@ -113,7 +114,7 @@ def collect_styled_contour_ids(style_id):
 def rebuild_contour_for_floor(floor):
     face, edge_loops = get_top_face_and_loops(floor)
     if not face or not edge_loops:
-        raise Exception("Не удалось получить верхнюю грань или её контуры.")
+        raise Exception(tr("contour_face_not_found"))
 
     old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_ЛинийКонтура"))
     style_id = get_line_style_id(doc, CONTOUR_STYLE_NAME)
@@ -121,7 +122,7 @@ def rebuild_contour_for_floor(floor):
     ids_to_delete = list(set(old_ids + styled_ids))
 
     created_ids = []
-    with revit.Transaction("Обвести контур фальшпола"):
+    with revit.Transaction(tr("tx_draw_contour")):
         contour_style = get_or_create_line_style(
             doc,
             CONTOUR_STYLE_NAME,
@@ -142,7 +143,7 @@ def rebuild_contour_for_floor(floor):
                     pass
 
         if not set_string_param(floor, "FP_ID_ЛинийКонтура", ";".join(created_ids)):
-            raise Exception("Не удалось записать FP_ID_ЛинийКонтура")
+            raise Exception(tr("contour_write_failed"))
 
     return {
         "deleted_count": deleted_count,
@@ -154,7 +155,7 @@ def rebuild_contour_for_floor(floor):
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(
-            "Открой план, чтобы выполнить полную подготовку.",
+            tr("prepare_all_open_plan"),
             title=TITLE_PREPARE_ALL,
         )
         raise Exception("Active view is not a plan")
@@ -163,37 +164,37 @@ try:
     ref = uidoc.Selection.PickObject(
         ObjectType.Element,
         pick_filter,
-        "Выберите управляющее перекрытие фальшпола",
+        tr("prepare_all_pick_floor"),
     )
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
 
     if not floor or not floor.Category:
-        forms.alert("Элемент не найден или без категории.", title=TITLE_PREPARE_ALL)
+        forms.alert(tr("invalid_element"), title=TITLE_PREPARE_ALL)
         raise Exception("Invalid element")
 
     if get_id_value(floor.Category.Id) != int(BuiltInCategory.OST_Floors):
         forms.alert(
-            "Выбранный элемент не является перекрытием.", title=TITLE_PREPARE_ALL
+            tr("element_not_floor"), title=TITLE_PREPARE_ALL
         )
         raise Exception("Element is not a floor")
 
-    base_point = uidoc.Selection.PickPoint("Укажите базовую точку раскладки")
+    base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))
 
-    step_x_mm = ask_mm_value(TITLE_PREPARE_ALL, "Введите шаг X, мм", 600)
+    step_x_mm = ask_mm_value(TITLE_PREPARE_ALL, tr("prompt_step_x"), 600)
     if step_x_mm is None:
         raise OperationCanceledException()
 
-    step_y_mm = ask_mm_value(TITLE_PREPARE_ALL, "Введите шаг Y, мм", 600)
+    step_y_mm = ask_mm_value(TITLE_PREPARE_ALL, tr("prompt_step_y"), 600)
     if step_y_mm is None:
         raise OperationCanceledException()
 
-    height_mm = ask_mm_value(TITLE_PREPARE_ALL, "Введите высоту фальшпола, мм", 500)
+    height_mm = ask_mm_value(TITLE_PREPARE_ALL, tr("prompt_floor_height"), 500)
     if height_mm is None:
         raise OperationCanceledException()
 
     missing_params = []
-    with revit.Transaction("Подготовить перекрытие фальшпола"):
+    with revit.Transaction(tr("tx_prepare_floor")):
         pairs = [
             ("FP_Шаг_X", mm_to_internal(step_x_mm)),
             ("FP_Шаг_Y", mm_to_internal(step_y_mm)),
@@ -207,47 +208,40 @@ try:
         for name, val in pairs:
             if not set_double_param(floor, name, val):
                 missing_params.append(name)
-        if not set_string_param(floor, "FP_Статус_Генерации", "Подготовлено"):
+        if not set_string_param(floor, "FP_Статус_Генерации", tr("status_prepared")):
             missing_params.append("FP_Статус_Генерации")
 
     if missing_params:
         raise Exception(
-            "Не удалось записать параметры:\n- {}".format("\n- ".join(missing_params))
+            tr("prepare_all_write_failed", missing="\n- ".join(missing_params))
         )
 
     contour_result = rebuild_contour_for_floor(floor)
     grid_result = redraw_grid_for_floor(
         floor,
         view,
-        "Построить сетку фальшпола",
+        tr("tx_redraw_grid"),
         update_style=True,
     )
 
     forms.alert(
-        "Готово.\n\n"
-        "ID перекрытия: {}\n"
-        "Шаг: {} x {} мм\n"
-        "Высота фальшпола: {} мм\n"
-        "Контуров найдено: {}\n"
-        "Удалено старых линий контура: {}\n"
-        "Создано новых линий контура: {}\n"
-        "Удалено старых линий сетки: {}\n"
-        "Создано новых линий сетки: {}".format(
-            get_id_value(floor.Id),
-            step_x_mm,
-            step_y_mm,
-            height_mm,
-            contour_result["loop_count"],
-            contour_result["deleted_count"],
-            contour_result["created_count"],
-            grid_result["deleted_count"],
-            grid_result["created_count"],
+        tr(
+            "prepare_all_done",
+            floor_id=get_id_value(floor.Id),
+            step_x=step_x_mm,
+            step_y=step_y_mm,
+            height=height_mm,
+            loops=contour_result["loop_count"],
+            del_contour=contour_result["deleted_count"],
+            new_contour=contour_result["created_count"],
+            del_grid=grid_result["deleted_count"],
+            new_grid=grid_result["created_count"],
         ),
         title=TITLE_PREPARE_ALL,
     )
 
 except OperationCanceledException:
-    forms.alert("Операция отменена.", title=TITLE_PREPARE_ALL)
+    forms.alert(tr("operation_cancelled"), title=TITLE_PREPARE_ALL)
 
 except Exception as ex:
-    forms.alert("Ошибка:\n{}".format(str(ex)), title=TITLE_PREPARE_ALL)
+    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_PREPARE_ALL)

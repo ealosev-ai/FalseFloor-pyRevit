@@ -10,36 +10,37 @@ from floor_common import (  # type: ignore
     parse_ids_from_string,
     set_string_param,
 )
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "Удалить плитки"
+TITLE = tr("del_title_tiles")
 _CANCELLED = "@@CANCELLED@@"
 
 try:
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise Exception(_CANCELLED)
 
     ref = uidoc.Selection.PickObject(
         ObjectType.Element,
         FloorOrPartSelectionFilter(),
-        "Выберите перекрытие фальшпола",
+        tr("pick_floor_prompt"),
     )
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
-        raise Exception("Не удалось определить перекрытие")
+        raise Exception(tr("source_floor_not_found"))
 
     old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
     if not old_ids:
-        forms.alert("Плитки не найдены.", title=TITLE)
+        forms.alert(tr("del_not_found_tiles"), title=TITLE)
         raise Exception(_CANCELLED)
 
     confirm = forms.alert(
-        "Удалить плиток: {}\n\nПродолжить?".format(len(old_ids)),
+        tr("del_confirm_tiles", count=len(old_ids)),
         title=TITLE,
         yes=True,
         no=True,
@@ -47,7 +48,7 @@ try:
     if not confirm:
         raise Exception(_CANCELLED)
 
-    with revit.Transaction("Удалить плитки"):
+    with revit.Transaction(tr("tx_delete_tiles")):
         deleted = 0
         for int_id in old_ids:
             try:
@@ -59,8 +60,8 @@ try:
                 pass
         set_string_param(floor, "FP_ID_Плиток", "")
 
-    forms.alert("Удалено плиток: {}".format(deleted), title=TITLE)
+    forms.alert(tr("del_done_tiles", count=deleted), title=TITLE)
 
 except Exception as ex:
     if str(ex) != _CANCELLED:
-        forms.alert("Ошибка: {}".format(ex), title=TITLE)
+        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

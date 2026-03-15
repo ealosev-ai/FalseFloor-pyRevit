@@ -9,32 +9,28 @@
 from Autodesk.Revit.DB import (  # type: ignore
     Transaction,
 )
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 app = doc.Application
-TITLE = "Вычистить FP_ (ОПАСНО)"
-CONFIRM_PHRASE = "УДАЛИТЬ FP"
+TITLE = tr("clean_title")
+CONFIRM_PHRASE = tr("clean_confirm_phrase")
 
 
 def _confirm_hard_delete(scope_label, count, names):
     preview = "\n".join(names[:40])
     if len(names) > 40:
-        preview += "\n... (+{} ещё)".format(len(names) - 40)
+        preview += "\n" + tr("clean_more", count=len(names) - 40)
 
-    msg = (
-        "Найдено FP_-параметров {}: {}\n\n{}\n\n"
-        "Это удалит все FP_-параметры из {}.\n"
-        "Операция потенциально ломает старые спецификации/фильтры/скрипты.\n\n"
-        "Продолжить?"
-    ).format(scope_label, count, preview, scope_label)
+    msg = tr("clean_found", scope=scope_label, count=count, preview=preview)
 
     confirm = forms.alert(msg, title=TITLE, yes=True, no=True)
     if not confirm:
         return False
 
     typed = forms.ask_for_string(
-        prompt="Для подтверждения введи: {}".format(CONFIRM_PHRASE),
+        prompt=tr("clean_type_confirm", phrase=CONFIRM_PHRASE),
         default="",
         title=TITLE,
     )
@@ -51,12 +47,12 @@ def _clean_family():
             fp_params.append(p)
 
     if not fp_params:
-        forms.alert("FP_-параметров не найдено в семействе.", title=TITLE)
+        forms.alert(tr("clean_no_params_family"), title=TITLE)
         return
 
     names = sorted([p.Definition.Name for p in fp_params])
-    if not _confirm_hard_delete("в семействе", len(fp_params), names):
-        forms.alert("Отмена очистки.", title=TITLE)
+    if not _confirm_hard_delete(tr("clean_scope_family"), len(fp_params), names):
+        forms.alert(tr("clean_cancel"), title=TITLE)
         return
 
     removed = []
@@ -78,9 +74,9 @@ def _clean_family():
             t.RollBack()
         raise
 
-    report = ["Удалено: {}".format(len(removed))]
+    report = [tr("clean_removed", count=len(removed))]
     if errors:
-        report.append("\nОшибки:")
+        report.append(tr("clean_errors_header"))
         for e in errors:
             report.append("  " + e)
     forms.alert("\n".join(report), title=TITLE)
@@ -99,12 +95,12 @@ def _clean_project():
             fp_defs.append(defn)
 
     if not fp_defs:
-        forms.alert("FP_-параметров не найдено в проекте.", title=TITLE)
+        forms.alert(tr("clean_no_params_project"), title=TITLE)
         return
 
     names = sorted([d.Name for d in fp_defs])
-    if not _confirm_hard_delete("в проекте", len(fp_defs), names):
-        forms.alert("Отмена очистки.", title=TITLE)
+    if not _confirm_hard_delete(tr("clean_scope_project"), len(fp_defs), names):
+        forms.alert(tr("clean_cancel"), title=TITLE)
         return
 
     removed = []
@@ -121,9 +117,9 @@ def _clean_project():
             except Exception as ex:
                 errors.append("{}: {}".format(name, ex))
 
-    report = ["Удалено из проекта: {}".format(len(removed))]
+    report = [tr("clean_removed_project", count=len(removed))]
     if errors:
-        report.append("\nОшибки:")
+        report.append(tr("clean_errors_header"))
         for e in errors:
             report.append("  " + e)
     forms.alert("\n".join(report), title=TITLE)
@@ -136,4 +132,4 @@ try:
     else:
         _clean_project()
 except Exception as ex:
-    forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
