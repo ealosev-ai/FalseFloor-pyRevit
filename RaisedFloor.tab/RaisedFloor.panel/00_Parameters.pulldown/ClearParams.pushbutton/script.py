@@ -41,17 +41,17 @@ def _clean_family():
     """Удаляет все RF_ parameters из текущего документа семейства."""
     fam_mgr = doc.FamilyManager
 
-    fp_params = []
+    rf_params = []
     for p in fam_mgr.GetParameters():
         if p.Definition.Name.startswith("RF_"):
-            fp_params.append(p)
+            rf_params.append(p)
 
-    if not fp_params:
+    if not rf_params:
         forms.alert(tr("clean_no_params_family"), title=TITLE)
         return
 
-    names = sorted([p.Definition.Name for p in fp_params])
-    if not _confirm_hard_delete(tr("clean_scope_family"), len(fp_params), names):
+    names = sorted([p.Definition.Name for p in rf_params])
+    if not _confirm_hard_delete(tr("clean_scope_family"), len(rf_params), names):
         forms.alert(tr("clean_cancel"), title=TITLE)
         return
 
@@ -61,7 +61,7 @@ def _clean_family():
     t = Transaction(doc, "Remove RF params")
     t.Start()
     try:
-        for p in fp_params:
+        for p in rf_params:
             name = p.Definition.Name
             try:
                 fam_mgr.RemoveParameter(p)
@@ -88,18 +88,18 @@ def _clean_project():
     it = bm.ForwardIterator()
     it.Reset()
 
-    fp_defs = []
+    rf_defs = []
     while it.MoveNext():
         defn = it.Key
         if defn and defn.Name and defn.Name.startswith("RF_"):
-            fp_defs.append(defn)
+            rf_defs.append(defn)
 
-    if not fp_defs:
+    if not rf_defs:
         forms.alert(tr("clean_no_params_project"), title=TITLE)
         return
 
-    names = sorted([d.Name for d in fp_defs])
-    if not _confirm_hard_delete(tr("clean_scope_project"), len(fp_defs), names):
+    names = sorted([d.Name for d in rf_defs])
+    if not _confirm_hard_delete(tr("clean_scope_project"), len(rf_defs), names):
         forms.alert(tr("clean_cancel"), title=TITLE)
         return
 
@@ -107,7 +107,7 @@ def _clean_project():
     errors = []
 
     with revit.Transaction("Remove RF params"):
-        for defn in fp_defs:
+        for defn in rf_defs:
             name = defn.Name
             try:
                 if bm.Remove(defn):

@@ -22,9 +22,9 @@
 
 Проверьте:
 
-1. Загружены семейства ФП*Плитка, ФП*Лонжерон, RF_Support.
+1. Загружены семейства RF_Tile, RF_Stringer, RF_Support.
 2. Вы работаете в плане, не в 3D виде.
-3. Созданы и доступны параметры FP\_\* в проекте и нужных семействах.
+3. Созданы и доступны параметры RF_** в проекте и нужных семействах.
 4. Выбрано корректное перекрытие зоны фальшпола.
 
 ### Структура панели
@@ -54,7 +54,7 @@
 
 Почему плитки раньше лонжеронов и стоек:
 
-- команда плиток записывает FP*Толщина*Плитки в зону;
+- команда плиток записывает RF_Tile_Thickness в зону;
 - лонжероны и стойки используют её в расчёте высотной схемы;
 - при запуске в обратном порядке сработают предупреждения и fallback к толщине из семейства.
 
@@ -62,8 +62,8 @@
 
 #### Параметры
 
-- Параметры проекта: создаёт/обновляет обязательные FP\_\* параметры в проекте.
-- Параметры семейств: создаёт/обновляет FP\_\* параметры в семействах.
+- Параметры проекта: создаёт/обновляет обязательные RF_** параметры в проекте.
+- Параметры семейств: создаёт/обновляет RF_** параметры в семействах.
 - Язык UI: переключает язык runtime-интерфейса RaisedFloor (Auto/RU/EN).
 - Очистить параметры: удаляет привязки параметров.
 
@@ -79,10 +79,10 @@
 
 Параметры:
 
-- FP*Шаг_X, FP*Шаг_Y
-- FP*База_X, FP*База*Y, FP*База_Z
-- FP*Высота*Фальшпола
-- FP*Смещение_X, FP*Смещение_Y
+- RF_Step_X, RF_Step_Y
+- RF_Base_X, RF_Base_Y, RF_Base_Z
+- RF_Floor_Height
+- RF_Offset_X, RF_Offset_Y
 
 #### 1 Подготовка -> Периметр
 
@@ -93,7 +93,7 @@
 
 Параметры:
 
-- FP*ID*ЛинийКонтура
+- RF_Contour_Lines_ID
 
 Важно:
 
@@ -110,7 +110,7 @@
 
 Параметры:
 
-- FP*ID*ЛинийСетки
+- RF_Grid_Lines_ID
 
 #### 2 Подобрать раскладку
 
@@ -141,19 +141,19 @@
 
 Поддержка void:
 
-- до 3 групп: FP*Вырез*_, FP*Вырез2*_, FP*Вырез3*\*
+- до 3 групп: RF_Void1_*, RF_Void2_*, RF_Void3_*
 
 Параметры экземпляра:
 
-- FP*Тип*Плитки
-- FP*Подрезка_X, FP*Подрезка_Y
-- FP*Вырез*\* (и группы 2/3)
-- FP*Колонка, FP*Ряд, FP*Марка, FP*Вентилируемая
+- RF_Tile_Type
+- RF_Cut_X, RF_Cut_Y
+- RF_Void_* (и группы 2/3)
+- RF_Column, RF_Row, RF_Mark, RF_Ventilated
 
 Параметры зоны:
 
-- FP*ID*Плиток
-- FP*Толщина*Плитки
+- RF_Tiles_ID
+- RF_Tile_Thickness
 
 #### 3 Лонжероны -> Разместить
 
@@ -166,8 +166,8 @@
 
 Параметры:
 
-- FP*ID*Лонжеронов_Верх
-- FP*ID*Лонжеронов_Низ
+- RF_Stringers_Top_ID
+- RF_Stringers_Bottom_ID
 
 #### 4 Стойки -> Разместить
 
@@ -175,11 +175,11 @@
 
 - ставит стойки по концам и промежуточным узлам нижних лонжеронов;
 - поворачивает стойки по оси нижних;
-- рассчитывает FP*Высота*Стойки из высотной схемы.
+- рассчитывает RF_Support_Height из высотной схемы.
 
 Параметры:
 
-- FP*ID*Стоек
+- RF_Supports_ID
 
 #### 6 Очистка
 
@@ -207,9 +207,9 @@
 
 Если стойки/лонжероны не размещаются:
 
-1. Проверьте FP*Высота*Фальшпола.
+1. Проверьте RF_Floor_Height.
 2. Проверьте, что семейства загружены.
-3. Проверьте наличие FP\_\* параметров.
+3. Проверьте наличие RF_** параметров.
 
 Если нужно начать заново:
 
@@ -251,9 +251,9 @@ Core idea:
 
 Check:
 
-1. Families ФП*Плитка, ФП*Лонжерон, RF_Support are loaded.
+1. Families RF_Tile, RF_Stringer, RF_Support are loaded.
 2. You are working in a plan view, not a 3D view.
-3. FP\_\* parameters exist and are writable in project/families.
+3. RF_** parameters exist and are writable in project/families.
 4. You select the correct source slab.
 
 ### Panel Structure
@@ -283,7 +283,7 @@ Main commands:
 
 Why tiles come before stringers/supports:
 
-- tile placement writes FP*Толщина*Плитки into the zone;
+- tile placement writes RF_Tile_Thickness into the zone;
 - stringers/supports use it for height-stack calculations;
 - if run earlier, warnings are shown and fallback thickness is used.
 
@@ -291,8 +291,8 @@ Why tiles come before stringers/supports:
 
 #### Parameters
 
-- Project Parameters: creates/updates required FP\_\* project parameters.
-- Family Parameters: creates/updates required FP\_\* family parameters.
+- Project Parameters: creates/updates required RF_** project parameters.
+- Family Parameters: creates/updates required RF_** family parameters.
 - UI Language: switches RaisedFloor runtime UI language (Auto/RU/EN).
 - Clear Parameters: removes parameter bindings.
 
@@ -308,10 +308,10 @@ Actions:
 
 Parameters:
 
-- FP*Шаг_X, FP*Шаг_Y
-- FP*База_X, FP*База*Y, FP*База_Z
-- FP*Высота*Фальшпола
-- FP*Смещение_X, FP*Смещение_Y
+- RF_Step_X, RF_Step_Y
+- RF_Base_X, RF_Base_Y, RF_Base_Z
+- RF_Floor_Height
+- RF_Offset_X, RF_Offset_Y
 
 #### 1 Prepare -> Contour
 
@@ -322,7 +322,7 @@ Actions:
 
 Parameters:
 
-- FP*ID*ЛинийКонтура
+- RF_Contour_Lines_ID
 
 Important:
 
@@ -339,7 +339,7 @@ Actions:
 
 Parameters:
 
-- FP*ID*ЛинийСетки
+- RF_Grid_Lines_ID
 
 #### 2 Find Layout Shift
 
@@ -370,19 +370,19 @@ Actions:
 
 Void support:
 
-- up to 3 groups: FP*Вырез*_, FP*Вырез2*_, FP*Вырез3*\*
+- up to 3 groups: RF_Void1_*, RF_Void2_*, RF_Void3_*
 
 Instance parameters:
 
-- FP*Тип*Плитки
-- FP*Подрезка_X, FP*Подрезка_Y
-- FP*Вырез*\* (plus groups 2/3)
-- FP*Колонка, FP*Ряд, FP*Марка, FP*Вентилируемая
+- RF_Tile_Type
+- RF_Cut_X, RF_Cut_Y
+- RF_Void_* (plus groups 2/3)
+- RF_Column, RF_Row, RF_Mark, RF_Ventilated
 
 Zone parameters:
 
-- FP*ID*Плиток
-- FP*Толщина*Плитки
+- RF_Tiles_ID
+- RF_Tile_Thickness
 
 #### 3 Stringers -> Place
 
@@ -395,8 +395,8 @@ Actions:
 
 Parameters:
 
-- FP*ID*Лонжеронов_Верх
-- FP*ID*Лонжеронов_Низ
+- RF_Stringers_Top_ID
+- RF_Stringers_Bottom_ID
 
 #### 4 Supports -> Place
 
@@ -404,11 +404,11 @@ Actions:
 
 - places supports on lower stringer endpoints and intermediate nodes;
 - rotates supports to match lower axis;
-- computes FP*Высота*Стойки from full stack.
+- computes RF_Support_Height from full stack.
 
 Parameters:
 
-- FP*ID*Стоек
+- RF_Supports_ID
 
 #### 6 Cleanup
 
@@ -436,9 +436,9 @@ If tile type/thickness changed:
 
 If stringers/supports do not place:
 
-1. Check FP*Высота*Фальшпола.
+1. Check RF_Floor_Height.
 2. Verify families are loaded.
-3. Verify FP\_\* parameters exist and are writable.
+3. Verify RF_** parameters exist and are writable.
 
 If you need a full rebuild:
 

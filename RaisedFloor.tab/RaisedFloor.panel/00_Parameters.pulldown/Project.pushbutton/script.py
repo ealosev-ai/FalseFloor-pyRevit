@@ -172,7 +172,13 @@ PARAM_DEFS = [
         _CATS_GENERIC,
         True,
     ),
-    ("RF_Support_Height", StorageType.Double, "Высота стойки (ft)", _CATS_GENERIC, True),
+    (
+        "RF_Support_Height",
+        StorageType.Double,
+        "Высота стойки (ft)",
+        _CATS_GENERIC,
+        True,
+    ),
     (
         "RF_Ventilated",
         StorageType.Integer,

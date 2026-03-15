@@ -287,7 +287,7 @@ def _load_fresh_definitions():
     return result
 
 
-def _collect_fp_families():
+def _collect_rf_families():
     """Собирает загруженные семейства с префиксом 'RF_'."""
     families = []
     for fam in FilteredElementCollector(doc).OfClass(Family):
@@ -502,7 +502,7 @@ def _run_in_family_editor():
 
 def _run_in_project():
     """Режим: мы в проекте — обрабатываем загруженные RF_-семейства."""
-    families = _collect_fp_families()
+    families = _collect_rf_families()
     if not families:
         forms.alert(
             tr("fam_no_families"),
