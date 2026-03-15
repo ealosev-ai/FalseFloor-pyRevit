@@ -44,8 +44,7 @@ def format_shift_result_lines(result, index=None, area_text=None):
         )
 
     lines.append(
-        "Оценка: {} | Полных: {} | Простых(>=100): {} | Сложных(>=100): {}".format(
-            result["score"],
+        "Полных: {} | Простых(>=100): {} | Сложных(>=100): {}".format(
             result["full_count"],
             result["viable_simple_count"],
             result["complex_count"],

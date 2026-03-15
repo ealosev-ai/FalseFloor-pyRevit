@@ -33,13 +33,13 @@ DEFAULT_ACCEPTABLE_CUT_MM = 200.0
 DEFAULT_COARSE_SHIFT_STEP_MM = 50.0
 DEFAULT_REFINE_SHIFT_STEP_MM = 10.0
 DEFAULT_REFINE_RADIUS_MM = 60.0
-DEFAULT_REFINE_TOP_N = 3
+DEFAULT_REFINE_TOP_N = 5
 DEFAULT_TOP_N = 10
 
 # Целевая кратность подрезок по краям (мм).
 # При равных основных метриках предпочитается вариант,
 # размеры подрезок которого ближе к кратным CUT_ROUND_MM.
-CUT_ROUND_MM = 5.0
+CUT_ROUND_MM = 10.0
 
 # Параметры сканирования min-width для complex cuts
 _SCAN_SAMPLES = 40
@@ -1058,9 +1058,11 @@ def evaluate_shift_exact(
         min_y, max_y, base_y, step_y, end_padding_steps=1.0, end_tolerance=0.0
     )
 
-    # Подсчёт линий сетки, лежащих ближе min_edge_clearance_mm к ребру выреза/колонны
+    # Взвешенный штраф за линии сетки, лежащие ближе min_edge_clearance_mm
+    # к ребру выреза/колонны. Чем ближе — тем выше штраф (clearance/distance).
     # (внешний контур не учитываем — у стен сеточный лонжерон рядом с контурным нормален)
     near_edge_count = 0
+    near_edge_penalty = 0.0
     if min_edge_clearance_mm > 0:
         if edge_xs_mm is None or edge_ys_mm is None:
             _exs = set()
@@ -1076,15 +1078,20 @@ def evaluate_shift_exact(
         for x in x_positions:
             x_mm = internal_to_mm(x)
             for ex in edge_xs_mm:
-                if abs(x_mm - ex) < clearance:
+                dist = abs(x_mm - ex)
+                if dist < clearance:
                     near_edge_count += 1
+                    near_edge_penalty += clearance / max(dist, 0.1)
                     break
         for y in y_positions:
             y_mm = internal_to_mm(y)
             for ey in edge_ys_mm:
-                if abs(y_mm - ey) < clearance:
+                dist = abs(y_mm - ey)
+                if dist < clearance:
                     near_edge_count += 1
+                    near_edge_penalty += clearance / max(dist, 0.1)
                     break
+    near_edge_penalty = round(near_edge_penalty, 2)
 
     full_count = 0
     simple_count = 0  # viable simple (>= 100 мм min_width)
@@ -1110,6 +1117,7 @@ def evaluate_shift_exact(
     # Площадь только рабочих подрезок (>= 50 мм); micro-фрагменты не входят.
     total_cut_area_mm2 = 0.0
     cut_groups = Counter()
+    viable_cuts_mm = []  # все viable cut_min для расчёта spread
 
     micro_fragment_cut_mm = DEFAULT_MICRO_FRAGMENT_CUT_MM
 
@@ -1183,6 +1191,7 @@ def evaluate_shift_exact(
 
                 # min/max и группы — по всем viable (>= 100 мм)
                 if cut_min >= unacceptable_cut_mm:
+                    viable_cuts_mm.append(cut_min)
                     if min_viable_cut_mm is None or cut_min < min_viable_cut_mm:
                         min_viable_cut_mm = cut_min
                     if max_viable_cut_mm is None or cut_min > max_viable_cut_mm:
@@ -1233,7 +1242,10 @@ def evaluate_shift_exact(
         return min(r, CUT_ROUND_MM - r)
 
     outer_roundness_penalty = round(
-        _edge_penalty_x(internal_to_mm(min_x)) + _edge_penalty_y(internal_to_mm(min_y)),
+        _edge_penalty_x(internal_to_mm(min_x))
+        + _edge_penalty_x(internal_to_mm(max_x))
+        + _edge_penalty_y(internal_to_mm(min_y))
+        + _edge_penalty_y(internal_to_mm(max_y)),
         2,
     )
 
@@ -1249,24 +1261,20 @@ def evaluate_shift_exact(
                 hole_roundness_penalty += _edge_penalty_y(max(_hys))
     hole_roundness_penalty = round(hole_roundness_penalty, 2)
 
-    score = (
-        unsplit_holes * 50000
-        + non_viable_count * 10000
-        + micro_fragment_count * 5000
-        + near_edge_count * 2000
-        + unwanted_count * 1000
-        + complex_count * 100
-        + viable_simple_count * 10
-        + unique_sizes * 5
-        - full_count
-        - int(min_viable_cut_rank)
-    )
+    # Штраф за разброс размеров подрезок — предпочитаем однородные подрезки
+    # (150+150 лучше, чем 100+200). Используем стандартное отклонение viable cut_min.
+    cut_spread_penalty = 0.0
+    if viable_cuts_mm:
+        _mean = sum(viable_cuts_mm) / len(viable_cuts_mm)
+        _var = sum((c - _mean) ** 2 for c in viable_cuts_mm) / len(viable_cuts_mm)
+        cut_spread_penalty = round(_var**0.5, 2)
 
     rank_key = (
         unsplit_holes,
         non_viable_count,
         micro_fragment_count,
         near_edge_count,
+        near_edge_penalty,
         unwanted_count,
         complex_count,
         viable_simple_count,
@@ -1275,6 +1283,7 @@ def evaluate_shift_exact(
         -min_viable_cut_rank,
         outer_roundness_penalty,
         hole_roundness_penalty,
+        cut_spread_penalty,
     )
 
     return {
@@ -1306,7 +1315,6 @@ def evaluate_shift_exact(
         "total_cut_area_mm2": total_cut_area_mm2,
         "cut_groups": dict(cut_groups),
         "rank_key": rank_key,
-        "score": score,
         "unsplit_holes": unsplit_holes,
         "near_edge_count": near_edge_count,
     }
@@ -1465,27 +1473,34 @@ def _snap_shifts_for_axis(vertex_coords_internal, base_internal, step_internal):
     if step_internal <= 0:
         return []
 
-    shifts = set()
+    seen_mm = set()  # дедупликация с точностью 1мм
+    shifts = []
     tiny = mm_to_internal(1.0)  # ±1мм от точного совпадения
     half_step = step_internal / 2.0
+
+    def _add(val):
+        key = round(internal_to_mm(val))
+        if key not in seen_mm:
+            seen_mm.add(key)
+            shifts.append(val)
 
     for coord in vertex_coords_internal:
         raw = (coord - base_internal) % step_internal
         if raw < 0:
             raw += step_internal
-        shifts.add(round(raw, 12))
+        _add(raw)
         # Чуть в стороны (±1мм) чтобы линия не совпадала с ребром точно
         for offset in (tiny, -tiny):
             shifted = (raw + offset) % step_internal
             if shifted < 0:
                 shifted += step_internal
-            shifts.add(round(shifted, 12))
+            _add(shifted)
         # Полшага от грани — грань колонны попадает между линиями сетки
         for offset in (half_step, -half_step):
             shifted = (raw + offset) % step_internal
             if shifted < 0:
                 shifted += step_internal
-            shifts.add(round(shifted, 12))
+            _add(shifted)
 
     return sorted(shifts)
 
@@ -1510,7 +1525,8 @@ def _snap_pairs_for_holes(
     tiny = mm_to_internal(1.0)
     half_x = step_x_internal / 2.0
     half_y = step_y_internal / 2.0
-    pairs = set()
+    pairs = []
+    seen = set()
 
     for hole_path in hole_paths:
         # bbox отверстия в internal units
@@ -1551,7 +1567,10 @@ def _snap_pairs_for_holes(
                         px += step_x_internal
                     if py < 0:
                         py += step_y_internal
-                    pairs.add((round(px, 12), round(py, 12)))
+                    key = (round(internal_to_mm(px)), round(internal_to_mm(py)))
+                    if key not in seen:
+                        seen.add(key)
+                        pairs.append((px, py))
 
             # Полшага от грани — колонна между линиями сетки
             for ox in (half_x, -half_x):
@@ -1562,7 +1581,10 @@ def _snap_pairs_for_holes(
                         px += step_x_internal
                     if py < 0:
                         py += step_y_internal
-                    pairs.add((round(px, 12), round(py, 12)))
+                    key = (round(internal_to_mm(px)), round(internal_to_mm(py)))
+                    if key not in seen:
+                        seen.add(key)
+                        pairs.append((px, py))
 
     return sorted(pairs)
 
@@ -1741,14 +1763,26 @@ def find_best_shift(
         hole_paths, base_x_raw, base_y_raw, step_x, step_y
     )
 
-    shift_x_set = set(round(v, 12) for v in shift_x_values)
-    shift_y_set = set(round(v, 12) for v in shift_y_values)
+    shift_x_set = {}  # key: round(mm) -> internal value
+    shift_y_set = {}
+    for v in shift_x_values:
+        k = round(internal_to_mm(v))
+        if k not in shift_x_set:
+            shift_x_set[k] = v
+    for v in shift_y_values:
+        k = round(internal_to_mm(v))
+        if k not in shift_y_set:
+            shift_y_set[k] = v
     for v in snap_x:
-        shift_x_set.add(round(v, 12))
+        k = round(internal_to_mm(v))
+        if k not in shift_x_set:
+            shift_x_set[k] = v
     for v in snap_y:
-        shift_y_set.add(round(v, 12))
-    shift_x_values = sorted(shift_x_set)
-    shift_y_values = sorted(shift_y_set)
+        k = round(internal_to_mm(v))
+        if k not in shift_y_set:
+            shift_y_set[k] = v
+    shift_x_values = sorted(shift_x_set.values())
+    shift_y_values = sorted(shift_y_set.values())
 
     coarse_results = _evaluate_shifts_grid(
         shift_x_values=shift_x_values, shift_y_values=shift_y_values, **eval_kwargs
@@ -1815,25 +1849,28 @@ def find_best_shift(
     # ---- Фаза 3: округление подрезок до кратных CUT_ROUND_MM ----
     all_results = list(all_results_map.values())
     results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
-    best_raw = results_sorted[0]
+    _cr_seeds = results_sorted[: min(3, len(results_sorted))]
 
-    _cr_pairs = _cut_round_deltas(
-        best_raw,
-        base_x_raw,
-        base_y_raw,
-        step_x,
-        step_y,
-        outer_bbox_internal,
-        hole_paths=hole_paths,
-    )
-    for _cr_sx, _cr_sy in _cr_pairs:
-        _cr_result = evaluate_shift_exact(shift_x=_cr_sx, shift_y=_cr_sy, **eval_kwargs)
-        _cr_key = _dedup_key(_cr_result)
-        if (
-            _cr_key not in all_results_map
-            or _cr_result["rank_key"] < all_results_map[_cr_key]["rank_key"]
-        ):
-            all_results_map[_cr_key] = _cr_result
+    for _cr_seed in _cr_seeds:
+        _cr_pairs = _cut_round_deltas(
+            _cr_seed,
+            base_x_raw,
+            base_y_raw,
+            step_x,
+            step_y,
+            outer_bbox_internal,
+            hole_paths=hole_paths,
+        )
+        for _cr_sx, _cr_sy in _cr_pairs:
+            _cr_result = evaluate_shift_exact(
+                shift_x=_cr_sx, shift_y=_cr_sy, **eval_kwargs
+            )
+            _cr_key = _dedup_key(_cr_result)
+            if (
+                _cr_key not in all_results_map
+                or _cr_result["rank_key"] < all_results_map[_cr_key]["rank_key"]
+            ):
+                all_results_map[_cr_key] = _cr_result
 
     all_results = list(all_results_map.values())
     results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
