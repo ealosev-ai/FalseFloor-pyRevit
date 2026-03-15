@@ -89,6 +89,44 @@ This order is intentional: tiles write the tile thickness used later by stringer
 - Issue template: ISSUE_REPORT.md
 - Test scenario: TESTPLAN.md
 
+## Naming Convention / Соглашение об именовании
+
+RU:
+
+Расширение использует **двуязычную схему именования**:
+
+| Слой | Язык | Пример | Причина |
+|---|---|---|---|
+| Папки расширения | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` | Инфраструктура pyRevit, видна разработчику |
+| Кнопки на ленте Revit | RU | Стрингеры, Плитки | Через bundle.yaml, видны пользователю |
+| Диалоги и сообщения | RU/EN авто | `tr("shift_done")` | Определяется по языку системы |
+| Семейства .rfa | RU | ФП_Плитка, ФП_Лонжерон | Имя семейства = имя файла, живёт в модели Revit |
+| Параметры Revit | RU | FP_Шаг_X, FP_ID_Лонжеронов_Верх | Привязаны к проекту, видны в спецификациях |
+
+Почему семейства и параметры остаются на русском:
+- Имя семейства в Revit берётся из имени .rfa файла. Переименование ломает существующие проекты.
+- Параметры навсегда привязаны к модели. Динамический перевод невозможен.
+- Целевая аудитория — русскоязычные инженеры. Русские имена параметров понятны сразу.
+- Revit полностью поддерживает кириллицу в именах параметров и семейств.
+
+EN:
+
+The extension uses a **bilingual naming scheme**:
+
+| Layer | Language | Example | Reason |
+|---|---|---|---|
+| Extension folders | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` | pyRevit infrastructure, seen by developers |
+| Ribbon buttons | RU | Стрингеры, Плитки | Via bundle.yaml, seen by end users |
+| Dialogs & messages | RU/EN auto | `tr("shift_done")` | Detected from system locale |
+| Families .rfa | RU | ФП_Плитка, ФП_Лонжерон | Family name = filename, lives in Revit model |
+| Revit parameters | RU | FP_Шаг_X, FP_ID_Лонжеронов_Верх | Bound to project, visible in schedules/filters |
+
+Why families and parameters stay in Russian:
+- Revit family name = the .rfa filename at load time. Renaming breaks existing projects.
+- Parameters are permanently bound in the model. No dynamic translation is possible.
+- Target audience is Russian-speaking engineers. Russian param names are immediately clear.
+- Revit fully supports Cyrillic in family and parameter names.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
