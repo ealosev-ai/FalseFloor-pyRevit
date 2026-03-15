@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## 2026-03-15 (v1.1.0)
+## 2026-03-15 (v1.2.0)
 
 ### Added
 
@@ -15,20 +15,16 @@
 - Russian UI titles preserved via bundle.yaml `title:` and `layout: [title:]` overrides.
 - **Terminology fix**: «лонжерон» → «стрингер» in all Russian user-facing strings; English already used "stringer".
 - Renamed env variable: FALSEFLOOR_LANG → RAISEDFLOOR_LANG.
-- Localized core user workflows to RU/EN:
-  - 01 Prepare -> Slab
-  - 01 Prepare -> Contour
-  - 01 Prepare -> Grid
-  - 02 Find Layout Shift
-  - 05 Tiles -> Place
-  - 06 Stringers -> Place
-  - 07 Supports -> Place
-- Localized shared shift/result UI strings in lib/floor_ui.py.
-- Updated documentation to bilingual RU/EN format:
-  - README.md
-  - RaisedFloor.tab/RaisedFloor.panel/README.md
+- **Unified naming to RF_ prefix** (was FP_/ФП_):
+  - Families: ФП_Плитка → RF_Tile, ФП_Лонжерон → RF_Stringer, ФП_Стойка → RF_Support
+  - All ~51 Revit parameters: FP_Шаг_X → RF_Step_X, FP_Высота_Фальшпола → RF_Floor_Height, etc.
+  - Line styles: ФП_Сетка → RF_Grid, ФП_Контур → RF_Contour, etc.
+  - Shared parameter group: Фальшпол → RaisedFloor
+  - Parameter value strings: Верхний/Нижний → Upper/Lower, Полная/Подрезка/Сложная → Full/SimpleCut/ComplexCut
+- Localized core user workflows to RU/EN.
+- Updated documentation to bilingual RU/EN format.
 
 ### Notes
 
-- Revit family names (RF_Stringer) and parameter names (RF_Stringers_Top_ID etc.) remain unchanged for backward compatibility with existing projects.
+- Families must be re-saved in Revit Family Editor with the new RF_ parameter names.
 - Runtime dialogs/reports are fully bilingual.

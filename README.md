@@ -93,41 +93,31 @@ This order is intentional: tiles write the tile thickness used later by stringer
 
 RU:
 
-Расширение использует **двуязычную схему именования**:
+Расширение использует **единую англоязычную схему именования** с префиксом `RF_`:
 
-| Слой | Язык | Пример | Причина |
-|---|---|---|---|
-| Папки расширения | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` | Инфраструктура pyRevit, видна разработчику |
-| Кнопки на ленте Revit | RU | Стрингеры, Плитки | Через bundle.yaml, видны пользователю |
-| Диалоги и сообщения | RU/EN авто | `tr("shift_done")` | Определяется по языку системы |
-| Семейства .rfa | RU | RF_Tile, RF_Stringer | Имя семейства = имя файла, живёт в модели Revit |
-| Параметры Revit | RU | RF_Step_X, RF_Stringers_Top_ID | Привязаны к проекту, видны в спецификациях |
-
-Почему семейства и параметры остаются на русском:
-
-- Имя семейства в Revit берётся из имени .rfa файла. Переименование ломает существующие проекты.
-- Параметры навсегда привязаны к модели. Динамический перевод невозможен.
-- Целевая аудитория — русскоязычные инженеры. Русские имена параметров понятны сразу.
-- Revit полностью поддерживает кириллицу в именах параметров и семейств.
+| Слой | Язык | Пример |
+|---|---|---|
+| Папки расширения | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` |
+| Кнопки на ленте Revit | RU | Стрингеры, Плитки (через bundle.yaml) |
+| Диалоги и сообщения | RU/EN авто | `tr("shift_done")` |
+| Семейства .rfa | EN | RF_Tile, RF_Stringer, RF_Support |
+| Параметры Revit | EN | RF_Step_X, RF_Floor_Height, RF_Stringers_Top_ID |
+| Стили линий | EN | RF_Grid, RF_Contour, RF_Base |
+| Группа общих параметров | EN | RaisedFloor |
 
 EN:
 
-The extension uses a **bilingual naming scheme**:
+The extension uses a **unified English naming scheme** with the `RF_` prefix:
 
-| Layer | Language | Example | Reason |
-|---|---|---|---|
-| Extension folders | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` | pyRevit infrastructure, seen by developers |
-| Ribbon buttons | RU | Стрингеры, Плитки | Via bundle.yaml, seen by end users |
-| Dialogs & messages | RU/EN auto | `tr("shift_done")` | Detected from system locale |
-| Families .rfa | RU | RF_Tile, RF_Stringer | Family name = filename, lives in Revit model |
-| Revit parameters | RU | RF_Step_X, RF_Stringers_Top_ID | Bound to project, visible in schedules/filters |
-
-Why families and parameters stay in Russian:
-
-- Revit family name = the .rfa filename at load time. Renaming breaks existing projects.
-- Parameters are permanently bound in the model. No dynamic translation is possible.
-- Target audience is Russian-speaking engineers. Russian param names are immediately clear.
-- Revit fully supports Cyrillic in family and parameter names.
+| Layer | Language | Example |
+|---|---|---|
+| Extension folders | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` |
+| Ribbon buttons | RU | Стрингеры, Плитки (via bundle.yaml) |
+| Dialogs & messages | RU/EN auto | `tr("shift_done")` |
+| Families .rfa | EN | RF_Tile, RF_Stringer, RF_Support |
+| Revit parameters | EN | RF_Step_X, RF_Floor_Height, RF_Stringers_Top_ID |
+| Line styles | EN | RF_Grid, RF_Contour, RF_Base |
+| Shared param group | EN | RaisedFloor |
 
 ## License
 
