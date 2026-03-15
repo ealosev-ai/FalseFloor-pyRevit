@@ -294,24 +294,23 @@ def build_loops_from_model_curves(curve_elements):
 
 
 def split_outer_inner_loops(loops):
-    outer = []
-    inner = []
+    """Определяет внешний контур по максимальной абсолютной площади.
 
-    for loop in loops:
-        area = polygon_area_xy_internal(loop)
-        if area > 0:
-            outer.append(loop)
-        else:
-            inner.append(loop)
+    Направление обхода линий модели в Revit не гарантировано,
+    поэтому знак площади ненадёжен. Контур с наибольшей площадью
+    всегда является внешним, остальные — отверстия.
+    """
+    if not loops:
+        return [], []
 
-    if not outer and loops:
-        sorted_loops = sorted(
-            loops, key=lambda loop: abs(polygon_area_xy_internal(loop)), reverse=True
-        )
-        outer.append(sorted_loops[0])
-        for loop in sorted_loops[1:]:
-            inner.append(loop)
+    sorted_loops = sorted(
+        loops,
+        key=lambda loop: abs(polygon_area_xy_internal(loop)),
+        reverse=True,
+    )
 
+    outer = [sorted_loops[0]]
+    inner = sorted_loops[1:]
     return outer, inner
 
 
@@ -671,80 +670,30 @@ def analyze_cell_exact(
     }
 
 
-def compute_single_void(cell_bbox_mm, clipped_paths):
-    """Вычислить вырез = ячейка − обрезанный полигон.
-
-    Разница cell_rect − clipped даёт области, которые нужно удалить.
-    Берёт самый большой прямоугольник из результата.
-    Смещения считаются от левого/нижнего края ячейки.
-
-    Args:
-        cell_bbox_mm: (x0, y0, x1, y1) ячейки сетки в мм.
-        clipped_paths: Paths64 — полигон(ы) обрезанной плитки.
-
-    Returns:
-        dict с ключами:
-            void — None или (w_mm, h_mm, margin_x_mm, margin_y_mm)
-            has_void — bool
-            has_unhandled_voids — bool (больше 1 void-а)
-        или None при ошибке.
-    """
-    c_x0, c_y0, c_x1, c_y1 = cell_bbox_mm
-
-    cell_rect = make_rect_path64(c_x0, c_y0, c_x1, c_y1)
-    cell_paths = Paths64()
-    cell_paths.Add(cell_rect)
-
-    voids = Difference(cell_paths, clipped_paths, FillRule.NonZero)
-
-    if voids.Count == 0:
-        return {"void": None, "has_void": False, "has_unhandled_voids": False}
-
-    # Берём самый большой void по площади
-    best_bbox = None
-    best_area = 0.0
-    for void_path in voids:
-        pts = path64_to_points_mm(void_path)
-        if not pts:
-            continue
-        vxs = [p[0] for p in pts]
-        vys = [p[1] for p in pts]
-        v_x0, v_x1 = min(vxs), max(vxs)
-        v_y0, v_y1 = min(vys), max(vys)
-        area = (v_x1 - v_x0) * (v_y1 - v_y0)
-        if area > best_area:
-            best_area = area
-            best_bbox = (v_x0, v_y0, v_x1, v_y1)
-
-    if best_bbox is None:
-        return {"void": None, "has_void": False, "has_unhandled_voids": False}
-
-    v_x0, v_y0, v_x1, v_y1 = best_bbox
-
-    w_mm = normalize_mm(v_x1 - v_x0)
-    h_mm = normalize_mm(v_y1 - v_y0)
-    # Отступ от левого/нижнего края ячейки (всегда >= 0)
-    margin_x_mm = normalize_mm(v_x0 - c_x0)
-    margin_y_mm = normalize_mm(v_y0 - c_y0)
-
-    if w_mm <= 0 or h_mm <= 0:
-        return {"void": None, "has_void": False, "has_unhandled_voids": False}
-
-    return {
-        "void": (w_mm, h_mm, margin_x_mm, margin_y_mm),
-        "has_void": True,
-        "has_unhandled_voids": voids.Count > 1,
-    }
-
-
 def _point_in_polygon_mm(px, py, polygon_pts):
-    """Ray-casting point-in-polygon test (мм координаты)."""
+    """Point-in-polygon test с проверкой точки на ребре (мм координаты)."""
     n = len(polygon_pts)
+    edge_tol = 0.05  # мм — допуск для попадания на ребро
     inside = False
     j = n - 1
     for i in range(n):
         xi, yi = polygon_pts[i]
         xj, yj = polygon_pts[j]
+        # Проверка: точка лежит на отрезке (xi,yi)-(xj,yj)
+        dx_seg = xj - xi
+        dy_seg = yj - yi
+        dx_pt = px - xi
+        dy_pt = py - yi
+        cross = abs(dx_seg * dy_pt - dy_seg * dx_pt)
+        seg_len = (dx_seg * dx_seg + dy_seg * dy_seg) ** 0.5
+        if seg_len > 0 and cross / seg_len < edge_tol:
+            # Точка на прямой — проверим bbox отрезка
+            if (
+                min(xi, xj) - edge_tol <= px <= max(xi, xj) + edge_tol
+                and min(yi, yj) - edge_tol <= py <= max(yi, yj) + edge_tol
+            ):
+                return True
+        # Стандартный ray-casting
         if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
             inside = not inside
         j = i
@@ -786,32 +735,50 @@ def _decompose_void_to_rects(void_pts, cell_bbox_mm):
             if _point_in_polygon_mm(cx, cy, void_pts):
                 rects.append((rx0, ry0, rx1, ry1))
 
-    # Мержим смежные прямоугольники по горизонтали (одинаковый Y-диапазон)
-    merged = []
-    used = [False] * len(rects)
-    for i, (ax0, ay0, ax1, ay1) in enumerate(rects):
-        if used[i]:
-            continue
-        cur_x0, cur_y0, cur_x1, cur_y1 = ax0, ay0, ax1, ay1
-        changed = True
-        while changed:
-            changed = False
-            for k in range(len(rects)):
-                if used[k]:
-                    continue
-                bx0, by0, bx1, by1 = rects[k]
-                # Тот же Y-диапазон и примыкают по X
-                if (
-                    abs(by0 - cur_y0) < 0.5
-                    and abs(by1 - cur_y1) < 0.5
-                    and (abs(bx0 - cur_x1) < 0.5 or abs(bx1 - cur_x0) < 0.5)
-                ):
-                    cur_x0 = min(cur_x0, bx0)
-                    cur_x1 = max(cur_x1, bx1)
-                    used[k] = True
-                    changed = True
-        used[i] = True
-        merged.append((cur_x0, cur_y0, cur_x1, cur_y1))
+    # Мержим смежные прямоугольники: сначала по горизонтали, потом по вертикали
+    def _merge_pass(rects, axis):
+        """axis='x' — горизонтальный merge, 'y' — вертикальный."""
+        merged = []
+        used = [False] * len(rects)
+        for i, (ax0, ay0, ax1, ay1) in enumerate(rects):
+            if used[i]:
+                continue
+            cur_x0, cur_y0, cur_x1, cur_y1 = ax0, ay0, ax1, ay1
+            changed = True
+            while changed:
+                changed = False
+                for k in range(len(rects)):
+                    if used[k]:
+                        continue
+                    bx0, by0, bx1, by1 = rects[k]
+                    if axis == "x":
+                        # Тот же Y-диапазон и примыкают по X
+                        if (
+                            abs(by0 - cur_y0) < 0.5
+                            and abs(by1 - cur_y1) < 0.5
+                            and (abs(bx0 - cur_x1) < 0.5 or abs(bx1 - cur_x0) < 0.5)
+                        ):
+                            cur_x0 = min(cur_x0, bx0)
+                            cur_x1 = max(cur_x1, bx1)
+                            used[k] = True
+                            changed = True
+                    else:
+                        # Тот же X-диапазон и примыкают по Y
+                        if (
+                            abs(bx0 - cur_x0) < 0.5
+                            and abs(bx1 - cur_x1) < 0.5
+                            and (abs(by0 - cur_y1) < 0.5 or abs(by1 - cur_y0) < 0.5)
+                        ):
+                            cur_y0 = min(cur_y0, by0)
+                            cur_y1 = max(cur_y1, by1)
+                            used[k] = True
+                            changed = True
+            used[i] = True
+            merged.append((cur_x0, cur_y0, cur_x1, cur_y1))
+        return merged
+
+    merged = _merge_pass(rects, "x")
+    merged = _merge_pass(merged, "y")
 
     return merged if merged else rects
 
@@ -1241,25 +1208,38 @@ def evaluate_shift_exact(
         r = cut % CUT_ROUND_MM
         return min(r, CUT_ROUND_MM - r)
 
-    outer_roundness_penalty = round(
-        _edge_penalty_x(internal_to_mm(min_x))
-        + _edge_penalty_x(internal_to_mm(max_x))
-        + _edge_penalty_y(internal_to_mm(min_y))
-        + _edge_penalty_y(internal_to_mm(max_y)),
-        2,
-    )
+    outer_roundness_penalty = 0.0
+    _outer_xs_mm = set()
+    _outer_ys_mm = set()
+    for _op in outer_paths:
+        for _pt in _op:
+            _outer_xs_mm.add(round(clipper_to_mm(_pt.X), 1))
+            _outer_ys_mm.add(round(clipper_to_mm(_pt.Y), 1))
+    _outer_penalties = []
+    for _ex in _outer_xs_mm:
+        _outer_penalties.append(_edge_penalty_x(_ex))
+    for _ey in _outer_ys_mm:
+        _outer_penalties.append(_edge_penalty_y(_ey))
+    if _outer_penalties:
+        outer_roundness_penalty = round(
+            sum(_outer_penalties) / len(_outer_penalties), 2
+        )
 
     hole_roundness_penalty = 0.0
     if hole_paths is not None:
+        _hole_penalties = []
         for _hp in hole_paths:
             _hxs = [clipper_to_mm(pt.X) for pt in _hp]
             _hys = [clipper_to_mm(pt.Y) for pt in _hp]
             if _hxs and _hys:
-                hole_roundness_penalty += _edge_penalty_x(min(_hxs))
-                hole_roundness_penalty += _edge_penalty_x(max(_hxs))
-                hole_roundness_penalty += _edge_penalty_y(min(_hys))
-                hole_roundness_penalty += _edge_penalty_y(max(_hys))
-    hole_roundness_penalty = round(hole_roundness_penalty, 2)
+                _hole_penalties.append(_edge_penalty_x(min(_hxs)))
+                _hole_penalties.append(_edge_penalty_x(max(_hxs)))
+                _hole_penalties.append(_edge_penalty_y(min(_hys)))
+                _hole_penalties.append(_edge_penalty_y(max(_hys)))
+        if _hole_penalties:
+            hole_roundness_penalty = round(
+                sum(_hole_penalties) / len(_hole_penalties), 2
+            )
 
     # Штраф за разброс размеров подрезок — предпочитаем однородные подрезки
     # (150+150 лучше, чем 100+200). Используем стандартное отклонение viable cut_min.
@@ -1277,8 +1257,8 @@ def evaluate_shift_exact(
         near_edge_penalty,
         unwanted_count,
         complex_count,
-        viable_simple_count,
         -full_count,
+        viable_simple_count,
         unique_sizes,
         -min_viable_cut_rank,
         outer_roundness_penalty,
@@ -1617,14 +1597,14 @@ def _cut_round_deltas(
     base_y_raw,
     step_x,
     step_y,
-    outer_bbox_internal,
+    outer_paths,
     hole_paths=None,
 ):
     """Аналитически вычисляет дельты сдвига, при которых подрезки
     у границ контура и колонн становятся кратны CUT_ROUND_MM.
 
-    Кандидаты генерируются отдельно для внешнего контура (приоритет)
-    и для колонн (дополнительно).
+    Кандидаты генерируются по уникальным X/Y вершинам внешнего контура
+    (приоритет) и по колоннам (дополнительно).
 
     Возвращает список пар (shift_x, shift_y) в internal units.
     """
@@ -1649,13 +1629,21 @@ def _cut_round_deltas(
             ds.add(CUT_ROUND_MM - r)
         return ds
 
-    # Кандидаты только по внешнему контуру (приоритет)
-    dx_outer = _deltas_for_edge(
-        internal_to_mm(outer_bbox_internal[0]), step_x_mm, base_x_mm
-    )
-    dy_outer = _deltas_for_edge(
-        internal_to_mm(outer_bbox_internal[1]), step_y_mm, base_y_mm
-    )
+    # Кандидаты по всем уникальным X/Y вершинам внешнего контура (приоритет)
+    # Для L/U-форм это покрывает все реальные рёбра, а не только bbox.
+    outer_xs_mm = set()
+    outer_ys_mm = set()
+    if outer_paths is not None:
+        for path in outer_paths:
+            for pt in path:
+                outer_xs_mm.add(round(clipper_to_mm(pt.X), 1))
+                outer_ys_mm.add(round(clipper_to_mm(pt.Y), 1))
+    dx_outer = set()
+    for ex in outer_xs_mm:
+        dx_outer |= _deltas_for_edge(ex, step_x_mm, base_x_mm)
+    dy_outer = set()
+    for ey in outer_ys_mm:
+        dy_outer |= _deltas_for_edge(ey, step_y_mm, base_y_mm)
 
     # Кандидаты по колоннам (дополнительно)
     dx_holes = set()
@@ -1858,7 +1846,7 @@ def find_best_shift(
             base_y_raw,
             step_x,
             step_y,
-            outer_bbox_internal,
+            outer_paths,
             hole_paths=hole_paths,
         )
         for _cr_sx, _cr_sy in _cr_pairs:

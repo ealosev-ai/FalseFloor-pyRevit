@@ -106,6 +106,21 @@ def _set_param(inst, name, value):
         p.Set(str(value))
 
 
+def _get_tile_thickness_fallback():
+    """Возвращает толщину плитки (ft) из семейства ФП_Плитка как fallback."""
+    thickness = 0.0
+    for fam in FilteredElementCollector(doc).OfClass(Family):
+        if fam.Name == "ФП_Плитка":
+            for sid in fam.GetFamilySymbolIds():
+                sym = doc.GetElement(sid)
+                if sym:
+                    t = get_double_param(sym, "FP_Толщина") or 0.0
+                    if t > thickness:
+                        thickness = t
+            break
+    return thickness
+
+
 def _extend_ends(segs, ext):
     """Удлиняет каждый H/V-сегмент на ext с каждого конца (нахлёст в углах)."""
     if ext < TOL:
@@ -468,12 +483,27 @@ def main():
         normalize_legacy_mm_param(floor, "FP_Шаг_Нижних")
         normalize_legacy_mm_param(floor, "FP_Макс_Длина_Лонжерона")
 
-    dir_x, sym_upper, sym_lower, max_len, lower_step = _ask_config(floor)
-
     missing = [n for n in REQUIRED_FLOOR_PARAMS if floor.LookupParameter(n) is None]
     if missing:
         forms.alert("Нет параметров:\n" + "\n".join(missing), title=TITLE)
         raise _Cancel()
+
+    tile_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
+    if not tile_ids:
+        proceed = forms.alert(
+            "Плитки ещё не размещены.\n\n"
+            "Лонжероны будут построены по высоте фальшпола и толщине семейства ФП_Плитка.\n"
+            "Если потом изменится тип или толщина плитки, лонжероны нужно будет перестроить.\n\n"
+            "Сначала рекомендуется разместить плитки, затем лонжероны.\n\n"
+            "Продолжить размещение лонжеронов сейчас?",
+            title=TITLE,
+            yes=True,
+            no=True,
+        )
+        if not proceed:
+            raise _Cancel()
+
+    dir_x, sym_upper, sym_lower, max_len, lower_step = _ask_config(floor)
 
     # ── Сетка ──
     v_lines, h_lines = _read_grid_lines(floor)
@@ -524,9 +554,37 @@ def main():
 
     total_h = get_double_param(floor, "FP_Высота_Фальшпола") or 0.0
     tile_t = get_double_param(floor, "FP_Толщина_Плитки") or 0.0
+    if tile_t <= TOL:
+        tile_t = _get_tile_thickness_fallback()
+
+    if total_h <= TOL:
+        forms.alert(
+            "FP_Высота_Фальшпола = 0 мм.\n"
+            "Сначала задай высоту фальшпола (Подготовка) и повтори.",
+            title=TITLE,
+        )
+        raise _Cancel()
+
+    if tile_t <= TOL:
+        forms.alert(
+            "Не удалось определить толщину плитки (FP_Толщина_Плитки / ФП_Плитка:FP_Толщина).\n"
+            "Сначала размести плитки или проверь параметры семейства ФП_Плитка.",
+            title=TITLE,
+        )
+        raise _Cancel()
+
     slab_off = z0 - level.Elevation
-    if total_h > 0 and (ph_upper + ph_lower) > 0:
+    if (ph_upper + ph_lower) > 0:
         support_h = total_h - tile_t - ph_upper - ph_lower
+        if support_h < -TOL:
+            forms.alert(
+                "Конфликт высот: FP_Высота_Фальшпола меньше суммы толщин\n"
+                "(плитка + верхний профиль + нижний профиль).\n"
+                "Увеличь FP_Высота_Фальшпола или проверь профили.",
+                title=TITLE,
+            )
+            raise _Cancel()
+        support_h = max(0.0, support_h)
         dz_upper = slab_off + support_h + ph_lower
         dz_lower = slab_off + support_h
     else:

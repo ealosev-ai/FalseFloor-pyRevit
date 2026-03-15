@@ -80,6 +80,16 @@ def _set_param(inst, name, value):
         p.Set(str(value))
 
 
+def _get_tile_thickness_fallback():
+    """Возвращает толщину плитки (ft) из семейства ФП_Плитка как fallback."""
+    thickness = 0.0
+    for sym in _get_family_symbols("ФП_Плитка"):
+        t = get_double_param(sym, "FP_Толщина") or 0.0
+        if t > thickness:
+            thickness = t
+    return thickness
+
+
 def _read_grid_lines(floor_el):
     """Читает DetailCurves сетки → v_keys, h_keys (отсортированные координаты)."""
     ids = parse_ids_from_string(get_string_param(floor_el, "FP_ID_ЛинийСетки"))
@@ -221,6 +231,21 @@ try:
         raise Exception(_CANCELLED)
     lower_axis, support_angle = _get_lower_axis_and_angle(lower_segs)
 
+    tile_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
+    if not tile_ids:
+        proceed = forms.alert(
+            "Плитки ещё не размещены.\n\n"
+            "Высота стойки будет рассчитана по высоте фальшпола и толщине семейства ФП_Плитка.\n"
+            "Если потом изменится тип или толщина плитки, стойки нужно будет перестроить.\n\n"
+            "Рекомендуемый порядок: плитки → лонжероны → стойки.\n\n"
+            "Продолжить размещение стоек сейчас?",
+            title=TITLE,
+            yes=True,
+            no=True,
+        )
+        if not proceed:
+            raise Exception(_CANCELLED)
+
     v_keys, h_keys = _read_grid_lines(floor)
 
     # --- Система высот ---
@@ -229,6 +254,20 @@ try:
 
     upper_ids_str = get_string_param(floor, "FP_ID_Лонжеронов_Верх")
     upper_longeron_ids = parse_ids_from_string(upper_ids_str)
+    if not upper_longeron_ids:
+        proceed = forms.alert(
+            "Верхние лонжероны не найдены.\n\n"
+            "Стойки можно разместить по нижним лонжеронам, но итоговая высотная схема\n"
+            "будет неполной до размещения верхних. После добавления верхних лонжеронов\n"
+            "стойки может потребоваться перестроить.\n\n"
+            "Продолжить размещение стоек сейчас?",
+            title=TITLE,
+            yes=True,
+            no=True,
+        )
+        if not proceed:
+            raise Exception(_CANCELLED)
+
     if upper_longeron_ids:
         first_el = doc.GetElement(ElementId(upper_longeron_ids[0]))
         if first_el:
@@ -248,9 +287,19 @@ try:
 
     total_h = get_double_param(floor, "FP_Высота_Фальшпола") or 0.0
     tile_t = get_double_param(floor, "FP_Толщина_Плитки") or 0.0
+    if tile_t <= COORD_TOL:
+        tile_t = _get_tile_thickness_fallback()
 
     if total_h > 0 and (profile_h_upper + profile_h_lower) > 0:
         support_h = total_h - tile_t - profile_h_upper - profile_h_lower
+        if support_h < -COORD_TOL:
+            forms.alert(
+                "Конфликт высот: FP_Высота_Фальшпола меньше суммы толщин\n"
+                "(плитка + верхний профиль + нижний профиль).",
+                title=TITLE,
+            )
+            raise Exception(_CANCELLED)
+        support_h = max(0.0, support_h)
     else:
         support_h = 0.0
 
