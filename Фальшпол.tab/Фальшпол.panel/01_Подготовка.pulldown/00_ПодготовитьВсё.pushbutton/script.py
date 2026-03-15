@@ -174,9 +174,7 @@ try:
         raise Exception("Invalid element")
 
     if get_id_value(floor.Category.Id) != int(BuiltInCategory.OST_Floors):
-        forms.alert(
-            tr("element_not_floor"), title=TITLE_PREPARE_ALL
-        )
+        forms.alert(tr("element_not_floor"), title=TITLE_PREPARE_ALL)
         raise Exception("Element is not a floor")
 
     base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))

@@ -7,9 +7,8 @@ Auto: удаляет override и включает автоопределение
 
 import os
 
-from pyrevit import forms  # type: ignore
-
 from floor_i18n import tr  # type: ignore
+from pyrevit import forms  # type: ignore
 
 ENV_NAME = "FALSEFLOOR_LANG"
 

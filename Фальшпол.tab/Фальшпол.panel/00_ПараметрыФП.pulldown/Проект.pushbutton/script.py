@@ -17,8 +17,8 @@ from Autodesk.Revit.DB import (  # type: ignore
     StorageType,
     TypeBinding,
 )
-from pyrevit import forms, revit  # type: ignore
 from floor_i18n import tr  # type: ignore
+from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 app = doc.Application
@@ -415,9 +415,7 @@ try:
     has_actions = bool(needed or wrong_type)
 
     if not has_actions:
-        msg = [
-            tr("proj_all_bound", count=len(PARAM_DEFS))
-        ]
+        msg = [tr("proj_all_bound", count=len(PARAM_DEFS))]
         if obsolete:
             msg.extend(
                 [
@@ -435,19 +433,26 @@ try:
             parts.append(tr("proj_already_ok", count=len(already)))
         if obsolete:
             parts.append(
-                tr("proj_legacy_not_removed", count=len(obsolete), names=", ".join(sorted(obsolete)))
+                tr(
+                    "proj_legacy_not_removed",
+                    count=len(obsolete),
+                    names=", ".join(sorted(obsolete)),
+                )
             )
         if wrong_type:
             parts.append(
-                tr("proj_wrong_type_list", count=len(wrong_type), names=", ".join(sorted(wrong_type)))
+                tr(
+                    "proj_wrong_type_list",
+                    count=len(wrong_type),
+                    names=", ".join(sorted(wrong_type)),
+                )
             )
         new_count = len(needed) - len(wrong_type)
         if new_count > 0:
             parts.append(tr("proj_new_count", count=new_count))
 
         confirm = forms.alert(
-            "\n".join(parts)
-            + "\n\n" + tr("proj_confirm_update"),
+            "\n".join(parts) + "\n\n" + tr("proj_confirm_update"),
             title=TITLE,
             yes=True,
             no=True,

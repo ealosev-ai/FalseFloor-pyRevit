@@ -19,8 +19,8 @@ from Autodesk.Revit.DB import (  # type: ignore
     StorageType,
     Transaction,
 )
-from pyrevit import forms, revit  # type: ignore
 from floor_i18n import tr  # type: ignore
+from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 app = doc.Application
@@ -448,9 +448,7 @@ def _process_family(family):
         # Находим устаревшие (не удаляем — могут использоваться в геометрии)
         obsolete = _find_obsolete_params(fam_doc, allowed)
         if obsolete:
-            errors.append(
-                tr("fam_obsolete", names=", ".join(sorted(obsolete)))
-            )
+            errors.append(tr("fam_obsolete", names=", ".join(sorted(obsolete))))
 
         if added:
             fam_doc.LoadFamily(doc)

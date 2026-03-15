@@ -82,9 +82,7 @@ def main():
         raise _Cancel()
 
     labels = [_zone_label(z) for z in zones]
-    selected = forms.CommandSwitchWindow.show(
-        labels, message=tr("reinf_select_zone")
-    )
+    selected = forms.CommandSwitchWindow.show(labels, message=tr("reinf_select_zone"))
     if not selected:
         raise _Cancel()
 

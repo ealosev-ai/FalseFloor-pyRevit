@@ -151,9 +151,7 @@ def read_floor_grid_params(floor):
 
     missing = [name for name, val in params.items() if val is None]
     if missing:
-        raise Exception(
-            tr("params_read_error", missing="\n- ".join(missing))
-        )
+        raise Exception(tr("params_read_error", missing="\n- ".join(missing)))
 
     return {
         "step_x": params["FP_Шаг_X"],

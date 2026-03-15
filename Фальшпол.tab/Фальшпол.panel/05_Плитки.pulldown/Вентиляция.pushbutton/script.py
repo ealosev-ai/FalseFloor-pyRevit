@@ -124,7 +124,12 @@ try:
         action = "unmark"
     else:
         choice = forms.alert(
-            tr("vent_mixed_message", total=len(tiles), vent=vent_count, normal=non_vent_count),
+            tr(
+                "vent_mixed_message",
+                total=len(tiles),
+                vent=vent_count,
+                normal=non_vent_count,
+            ),
             title=TITLE,
             options=[
                 tr("vent_mark_option"),

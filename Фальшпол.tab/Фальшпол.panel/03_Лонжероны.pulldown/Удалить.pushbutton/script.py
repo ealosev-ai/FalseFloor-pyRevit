@@ -43,7 +43,12 @@ try:
         raise Exception(_CANCELLED)
 
     confirm = forms.alert(
-        tr("del_confirm_longerons", count=len(all_ids), upper=len(upper_ids), lower=len(lower_ids)),
+        tr(
+            "del_confirm_longerons",
+            count=len(all_ids),
+            upper=len(upper_ids),
+            lower=len(lower_ids),
+        ),
         title=TITLE,
         yes=True,
         no=True,

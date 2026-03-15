@@ -5,8 +5,8 @@ import os
 import re
 import tempfile
 
-from pyrevit import forms  # type: ignore
 from floor_i18n import tr  # type: ignore
+from pyrevit import forms  # type: ignore
 
 
 def _format_inline(text):
