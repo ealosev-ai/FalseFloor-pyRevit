@@ -81,3 +81,7 @@ This order is intentional: tiles write the tile thickness used later by stringer
 - Main user guide: Фальшпол.tab/Фальшпол.panel/README.md
 - Issue template: ISSUE_REPORT.md
 - Test scenario: TESTPLAN.md
+
+## License
+
+MIT — see [LICENSE](LICENSE).
