@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Стрингеры: удалить зону усиления по ID."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
@@ -18,7 +18,7 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr("reinf_del_title")
-PARAM_ZONES = "FP_ЗоныУсиления_JSON"
+PARAM_ZONES = "RF_Reinf_Zones_JSON"
 
 
 class _Cancel(Exception):

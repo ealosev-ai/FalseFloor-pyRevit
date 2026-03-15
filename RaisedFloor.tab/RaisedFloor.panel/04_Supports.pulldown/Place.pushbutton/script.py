@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """07 Стойки — расстановка по размещённым нижним лонжеронам.
 
 Логика:
@@ -6,7 +6,7 @@
   2. Промежуточные стойки равномерно с макс.шагом (по умолчанию 600 мм).
   3. Минимум 2 стойки на каждый лонжерон (концы).
   4. Совпадающие узлы (перекрёстки) дедуплицируются.
-Сохраняет ID стоек в FP_ID_Стоек.
+Сохраняет ID стоек в RF_Supports_ID.
 """
 
 import math
@@ -46,7 +46,7 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr("title_supports")
-FAMILY_SUPPORT = "ФП_Стойка"
+FAMILY_SUPPORT = "RF_Support"
 _CANCELLED = "@@CANCELLED@@"
 COORD_TOL = 1e-6
 DEFAULT_MAX_SPACING_MM = 1000.0  # макс. шаг между стойками вдоль лонжерона
@@ -82,10 +82,10 @@ def _set_param(inst, name, value):
 
 
 def _get_tile_thickness_fallback():
-    """Возвращает толщину плитки (ft) из семейства ФП_Плитка как fallback."""
+    """Возвращает толщину плитки (ft) из семейства RF_Tile как fallback."""
     thickness = 0.0
-    for sym in _get_family_symbols("ФП_Плитка"):
-        t = get_double_param(sym, "FP_Толщина") or 0.0
+    for sym in _get_family_symbols("RF_Tile"):
+        t = get_double_param(sym, "RF_Thickness") or 0.0
         if t > thickness:
             thickness = t
     return thickness
@@ -93,7 +93,7 @@ def _get_tile_thickness_fallback():
 
 def _read_grid_lines(floor_el):
     """Читает DetailCurves сетки → v_keys, h_keys (отсортированные координаты)."""
-    ids = parse_ids_from_string(get_string_param(floor_el, "FP_ID_ЛинийСетки"))
+    ids = parse_ids_from_string(get_string_param(floor_el, "RF_Grid_Lines_ID"))
     v_set = set()
     h_set = set()
     for int_id in ids:
@@ -116,7 +116,7 @@ def _read_grid_lines(floor_el):
 
 def _read_lower_segments(floor_el):
     """Читает нижние лонжероны → список (x1, y1, x2, y2)."""
-    ids = parse_ids_from_string(get_string_param(floor_el, "FP_ID_Лонжеронов_Низ"))
+    ids = parse_ids_from_string(get_string_param(floor_el, "RF_Stringers_Bottom_ID"))
     segs = []
     for int_id in ids:
         el = doc.GetElement(ElementId(int_id))
@@ -232,7 +232,7 @@ try:
         raise Exception(_CANCELLED)
     lower_axis, support_angle = _get_lower_axis_and_angle(lower_segs)
 
-    tile_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
+    tile_ids = parse_ids_from_string(get_string_param(floor, "RF_Tiles_ID"))
     if not tile_ids:
         proceed = forms.alert(
             tr("supports_tiles_missing"),
@@ -249,7 +249,7 @@ try:
     profile_h_upper = 0.0
     profile_h_lower = 0.0
 
-    upper_ids_str = get_string_param(floor, "FP_ID_Лонжеронов_Верх")
+    upper_ids_str = get_string_param(floor, "RF_Stringers_Top_ID")
     upper_longeron_ids = parse_ids_from_string(upper_ids_str)
     if not upper_longeron_ids:
         proceed = forms.alert(
@@ -266,20 +266,20 @@ try:
         if first_el:
             t = doc.GetElement(first_el.GetTypeId())
             if t:
-                profile_h_upper = get_double_param(t, "FP_Высота_Профиля") or 0.0
+                profile_h_upper = get_double_param(t, "RF_Profile_Height") or 0.0
 
     lower_longeron_ids = parse_ids_from_string(
-        get_string_param(floor, "FP_ID_Лонжеронов_Низ")
+        get_string_param(floor, "RF_Stringers_Bottom_ID")
     )
     if lower_longeron_ids:
         first_el = doc.GetElement(ElementId(lower_longeron_ids[0]))
         if first_el:
             t = doc.GetElement(first_el.GetTypeId())
             if t:
-                profile_h_lower = get_double_param(t, "FP_Высота_Профиля") or 0.0
+                profile_h_lower = get_double_param(t, "RF_Profile_Height") or 0.0
 
-    total_h = get_double_param(floor, "FP_Высота_Фальшпола") or 0.0
-    tile_t = get_double_param(floor, "FP_Толщина_Плитки") or 0.0
+    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
+    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
     if tile_t <= COORD_TOL:
         tile_t = _get_tile_thickness_fallback()
 
@@ -305,7 +305,7 @@ try:
     )
 
     # Генерация узлов стоек
-    base_size = get_double_param(sym_support, "FP_Размер_Опоры") or 0.0
+    base_size = get_double_param(sym_support, "RF_Base_Size") or 0.0
     support_half = base_size / 2.0
     support_nodes = _generate_support_nodes(lower_segs, max_spacing, support_half)
 
@@ -333,7 +333,7 @@ try:
     z0 = z0_abs - level_elevation
 
     # Подтверждение
-    old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Стоек"))
+    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Supports_ID"))
 
     msg = [
         tr("supports_count", count=len(support_nodes)),
@@ -397,14 +397,14 @@ try:
             s_count += 1
             col = _nearest_idx(v_keys, sx)
             row = _nearest_idx(h_keys, sy)
-            _set_param(inst, "FP_Колонка", col)
-            _set_param(inst, "FP_Ряд", row)
-            _set_param(inst, "FP_Марка", "СТ.{}".format(s_count))
+            _set_param(inst, "RF_Column", col)
+            _set_param(inst, "RF_Row", row)
+            _set_param(inst, "RF_Mark", "СТ.{}".format(s_count))
             if support_h > 0:
-                _set_param(inst, "FP_Высота_Стойки", support_h)
+                _set_param(inst, "RF_Support_Height", support_h)
             placed_ids.append(str(inst.Id.Value))
 
-        set_string_param(floor, "FP_ID_Стоек", ";".join(placed_ids))
+        set_string_param(floor, "RF_Supports_ID", ";".join(placed_ids))
 
     report = tr("supports_done", count=s_count, deleted=deleted)
     report += "\n" + tr("supports_axis", axis=lower_axis)

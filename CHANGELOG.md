@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 ## 2026-03-15 (v1.1.0)
 
@@ -16,19 +16,19 @@
 - **Terminology fix**: «лонжерон» → «стрингер» in all Russian user-facing strings; English already used "stringer".
 - Renamed env variable: FALSEFLOOR_LANG → RAISEDFLOOR_LANG.
 - Localized core user workflows to RU/EN:
-    - 01 Prepare -> Slab
-    - 01 Prepare -> Contour
-    - 01 Prepare -> Grid
-    - 02 Find Layout Shift
-    - 05 Tiles -> Place
-    - 06 Stringers -> Place
-    - 07 Supports -> Place
+  - 01 Prepare -> Slab
+  - 01 Prepare -> Contour
+  - 01 Prepare -> Grid
+  - 02 Find Layout Shift
+  - 05 Tiles -> Place
+  - 06 Stringers -> Place
+  - 07 Supports -> Place
 - Localized shared shift/result UI strings in lib/floor_ui.py.
 - Updated documentation to bilingual RU/EN format:
-    - README.md
-    - RaisedFloor.tab/RaisedFloor.panel/README.md
+  - README.md
+  - RaisedFloor.tab/RaisedFloor.panel/README.md
 
 ### Notes
 
-- Revit family names (ФП_Лонжерон) and parameter names (FP_ID_Лонжеронов_Верх etc.) remain unchanged for backward compatibility with existing projects.
+- Revit family names (RF_Stringer) and parameter names (RF_Stringers_Top_ID etc.) remain unchanged for backward compatibility with existing projects.
 - Runtime dialogs/reports are fully bilingual.

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 import json
 import math
@@ -19,11 +19,11 @@ from pyrevit import revit  # type: ignore
 
 doc = revit.doc
 
-REINFORCEMENT_ZONES_PARAM = "FP_ЗоныУсиления_JSON"
+REINFORCEMENT_ZONES_PARAM = "RF_Reinf_Zones_JSON"
 
 _LEGACY_MM_LENGTH_PARAM_LIMITS = {
-    "FP_Шаг_Нижних": 10000.0,
-    "FP_Макс_Длина_Лонжерона": 20000.0,
+    "RF_Bottom_Step": 10000.0,
+    "RF_Max_Stringer_Len": 20000.0,
 }
 
 
@@ -143,10 +143,10 @@ def get_source_floor(el, visited_ids=None):
 
 def read_floor_grid_params(floor):
     params = {
-        "FP_Шаг_X": get_double_param(floor, "FP_Шаг_X"),
-        "FP_Шаг_Y": get_double_param(floor, "FP_Шаг_Y"),
-        "FP_База_X": get_double_param(floor, "FP_База_X"),
-        "FP_База_Y": get_double_param(floor, "FP_База_Y"),
+        "RF_Step_X": get_double_param(floor, "RF_Step_X"),
+        "RF_Step_Y": get_double_param(floor, "RF_Step_Y"),
+        "RF_Base_X": get_double_param(floor, "RF_Base_X"),
+        "RF_Base_Y": get_double_param(floor, "RF_Base_Y"),
     }
 
     missing = [name for name, val in params.items() if val is None]
@@ -154,10 +154,10 @@ def read_floor_grid_params(floor):
         raise Exception(tr("params_read_error", missing="\n- ".join(missing)))
 
     return {
-        "step_x": params["FP_Шаг_X"],
-        "step_y": params["FP_Шаг_Y"],
-        "base_x_raw": params["FP_База_X"],
-        "base_y_raw": params["FP_База_Y"],
+        "step_x": params["RF_Step_X"],
+        "step_y": params["RF_Step_Y"],
+        "base_x_raw": params["RF_Base_X"],
+        "base_y_raw": params["RF_Base_Y"],
     }
 
 

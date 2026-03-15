@@ -1,4 +1,4 @@
-# FalseFloor Panel Guide
+# RaisedFloor Panel Guide
 
 ## RU
 
@@ -8,9 +8,9 @@
 
 Плагин работает через семейства, а не через Revit Parts:
 
-- ФП_Плитка
-- ФП_Лонжерон
-- ФП_Стойка
+- RF_Tile
+- RF_Stringer
+- RF_Support
 
 Базовый принцип:
 
@@ -22,7 +22,7 @@
 
 Проверьте:
 
-1. Загружены семейства ФП*Плитка, ФП*Лонжерон, ФП_Стойка.
+1. Загружены семейства ФП*Плитка, ФП*Лонжерон, RF_Support.
 2. Вы работаете в плане, не в 3D виде.
 3. Созданы и доступны параметры FP\_\* в проекте и нужных семействах.
 4. Выбрано корректное перекрытие зоны фальшпола.
@@ -64,7 +64,7 @@
 
 - Параметры проекта: создаёт/обновляет обязательные FP\_\* параметры в проекте.
 - Параметры семейств: создаёт/обновляет FP\_\* параметры в семействах.
-- Язык UI: переключает язык runtime-интерфейса FalseFloor (Auto/RU/EN).
+- Язык UI: переключает язык runtime-интерфейса RaisedFloor (Auto/RU/EN).
 - Очистить параметры: удаляет привязки параметров.
 
 #### 1 Подготовка -> Перекрытие
@@ -218,28 +218,28 @@
 
 ### Ключевые параметры зоны
 
-- FP*Шаг_X, FP*Шаг_Y
-- FP*Смещение_X, FP*Смещение_Y
-- FP*База_X, FP*База*Y, FP*База_Z
-- FP*Высота*Фальшпола
-- FP*Толщина*Плитки
-- FP*ID*ЛинийКонтура
-- FP*ID*ЛинийСетки
-- FP*ID*Плиток
-- FP*ID*Лонжеронов*Верх, FP_ID*Лонжеронов_Низ
-- FP*ID*Стоек
+- RF_Step_X, RF_Step_Y
+- RF_Offset_X, RF_Offset_Y
+- RF_Base_X, RF_Base_Y, RF_Base_Z
+- RF_Floor_Height
+- RF_Tile_Thickness
+- RF_Contour_Lines_ID
+- RF_Grid_Lines_ID
+- RF_Tiles_ID
+- RF_Stringers_Top_ID, RF_Stringers_Bottom_ID
+- RF_Supports_ID
 
 ## EN
 
 ### Purpose
 
-This is the detailed help page for the FalseFloor panel in pyRevit.
+This is the detailed help page for the RaisedFloor panel in pyRevit.
 
 The workflow is family-based, not Revit Parts based:
 
-- ФП_Плитка
-- ФП_Лонжерон
-- ФП_Стойка
+- RF_Tile
+- RF_Stringer
+- RF_Support
 
 Core idea:
 
@@ -251,7 +251,7 @@ Core idea:
 
 Check:
 
-1. Families ФП*Плитка, ФП*Лонжерон, ФП_Стойка are loaded.
+1. Families ФП*Плитка, ФП*Лонжерон, RF_Support are loaded.
 2. You are working in a plan view, not a 3D view.
 3. FP\_\* parameters exist and are writable in project/families.
 4. You select the correct source slab.
@@ -293,7 +293,7 @@ Why tiles come before stringers/supports:
 
 - Project Parameters: creates/updates required FP\_\* project parameters.
 - Family Parameters: creates/updates required FP\_\* family parameters.
-- UI Language: switches FalseFloor runtime UI language (Auto/RU/EN).
+- UI Language: switches RaisedFloor runtime UI language (Auto/RU/EN).
 - Clear Parameters: removes parameter bindings.
 
 #### 1 Prepare -> Slab
@@ -447,13 +447,13 @@ If you need a full rebuild:
 
 ### Critical Zone Parameters
 
-- FP*Шаг_X, FP*Шаг_Y
-- FP*Смещение_X, FP*Смещение_Y
-- FP*База_X, FP*База*Y, FP*База_Z
-- FP*Высота*Фальшпола
-- FP*Толщина*Плитки
-- FP*ID*ЛинийКонтура
-- FP*ID*ЛинийСетки
-- FP*ID*Плиток
-- FP*ID*Лонжеронов*Верх, FP_ID*Лонжеронов_Низ
-- FP*ID*Стоек
+- RF_Step_X, RF_Step_Y
+- RF_Offset_X, RF_Offset_Y
+- RF_Base_X, RF_Base_Y, RF_Base_Z
+- RF_Floor_Height
+- RF_Tile_Thickness
+- RF_Contour_Lines_ID
+- RF_Grid_Lines_ID
+- RF_Tiles_ID
+- RF_Stringers_Top_ID, RF_Stringers_Bottom_ID
+- RF_Supports_ID

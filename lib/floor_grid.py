@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import (  # type: ignore
     XYZ,
@@ -22,17 +22,17 @@ from pyrevit import revit  # type: ignore
 
 doc = revit.doc
 
-GRID_LINE_STYLE_NAME = "ФП_Сетка"
+GRID_LINE_STYLE_NAME = "RF_Grid"
 GRID_COLOR = Color(100, 149, 237)  # васильковый синий
 GRID_LINE_PATTERN = "Center"
 
-BASE_MARKER_STYLE_NAME = "ФП_База"
+BASE_MARKER_STYLE_NAME = "RF_Base"
 BASE_MARKER_COLOR = Color(255, 0, 120)
 
-CONTOUR_STYLE_NAME = "ФП_Контур"
+CONTOUR_STYLE_NAME = "RF_Contour"
 CONTOUR_COLOR = Color(0, 255, 0)
 
-NEAR_COLUMN_STYLE_NAME = "ФП_СеткаКолонна"
+NEAR_COLUMN_STYLE_NAME = "RF_GridColumn"
 NEAR_COLUMN_COLOR = Color(255, 80, 80)  # красный — внимание
 
 # Минимальный порог, если стрингер не найден (мм)
@@ -43,11 +43,11 @@ def _get_stringer_clearance_mm():
     """Читает макс. ширину профиля стрингера (мм) для near-edge подсветки."""
     clearance = 0.0
     for fam in FilteredElementCollector(doc).OfClass(Family):
-        if fam.Name == "ФП_Лонжерон":
+        if fam.Name == "RF_Stringer":
             for sid in fam.GetFamilySymbolIds():
                 sym = doc.GetElement(sid)
                 if sym:
-                    pw = get_double_param(sym, "FP_Ширина_Профиля")
+                    pw = get_double_param(sym, "RF_Profile_Width")
                     if pw:
                         pw_mm = pw * _INTERNAL_TO_MM
                         if pw_mm > clearance:
@@ -199,7 +199,7 @@ def _recreate_contour_on_top(floor, view, update_style=False):
     рисует заново с тем же стилем. Возвращает количество пересозданных.
     """
     old_contour_ids = parse_ids_from_string(
-        get_string_param(floor, "FP_ID_ЛинийКонтура")
+        get_string_param(floor, "RF_Contour_Lines_ID")
     )
     if not old_contour_ids:
         return 0
@@ -243,32 +243,32 @@ def _recreate_contour_on_top(floor, view, update_style=False):
             pass
 
     if new_ids:
-        set_string_param(floor, "FP_ID_ЛинийКонтура", ";".join(new_ids))
+        set_string_param(floor, "RF_Contour_Lines_ID", ";".join(new_ids))
 
     return len(new_ids)
 
 
 def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
-    step_x = get_double_param(floor, "FP_Шаг_X")
-    step_y = get_double_param(floor, "FP_Шаг_Y")
-    base_x_raw = get_double_param(floor, "FP_База_X")
-    base_y_raw = get_double_param(floor, "FP_База_Y")
-    shift_x = get_double_param(floor, "FP_Смещение_X")
-    shift_y = get_double_param(floor, "FP_Смещение_Y")
+    step_x = get_double_param(floor, "RF_Step_X")
+    step_y = get_double_param(floor, "RF_Step_Y")
+    base_x_raw = get_double_param(floor, "RF_Base_X")
+    base_y_raw = get_double_param(floor, "RF_Base_Y")
+    shift_x = get_double_param(floor, "RF_Offset_X")
+    shift_y = get_double_param(floor, "RF_Offset_Y")
 
     missing = []
     if step_x is None:
-        missing.append("FP_Шаг_X")
+        missing.append("RF_Step_X")
     if step_y is None:
-        missing.append("FP_Шаг_Y")
+        missing.append("RF_Step_Y")
     if base_x_raw is None:
-        missing.append("FP_База_X")
+        missing.append("RF_Base_X")
     if base_y_raw is None:
-        missing.append("FP_База_Y")
+        missing.append("RF_Base_Y")
     if shift_x is None:
-        missing.append("FP_Смещение_X")
+        missing.append("RF_Offset_X")
     if shift_y is None:
-        missing.append("FP_Смещение_Y")
+        missing.append("RF_Offset_Y")
 
     if missing:
         raise Exception(
@@ -304,8 +304,8 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
         raise Exception("Не удалось построить позиции линий сетки.")
 
     # Собираем ID для удаления: сохранённые + fallback по стилю
-    old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_ЛинийСетки"))
-    old_marker_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_МаркераБазы"))
+    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Grid_Lines_ID"))
+    old_marker_ids = parse_ids_from_string(get_string_param(floor, "RF_Base_Marker_ID"))
     style_id = get_line_style_id(doc, GRID_LINE_STYLE_NAME)
     styled_ids = _collect_styled_curve_ids(view, style_id) if style_id else []
     near_col_style_id = get_line_style_id(doc, NEAR_COLUMN_STYLE_NAME)
@@ -456,19 +456,19 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
                 marker_ids.append(str(dc_r.Id.Value))
 
         ids_string = ";".join(created_ids)
-        ok = set_string_param(floor, "FP_ID_ЛинийСетки", ids_string)
+        ok = set_string_param(floor, "RF_Grid_Lines_ID", ids_string)
         if not ok:
-            raise Exception("Не удалось записать FP_ID_ЛинийСетки")
+            raise Exception("Не удалось записать RF_Grid_Lines_ID")
 
         if marker_ids:
             marker_ids_string = ";".join(marker_ids)
-            ok_marker = set_string_param(floor, "FP_ID_МаркераБазы", marker_ids_string)
+            ok_marker = set_string_param(floor, "RF_Base_Marker_ID", marker_ids_string)
             if not ok_marker:
-                raise Exception("Не удалось записать FP_ID_МаркераБазы")
+                raise Exception("Не удалось записать RF_Base_Marker_ID")
         else:
-            ok_marker = set_string_param(floor, "FP_ID_МаркераБазы", "")
+            ok_marker = set_string_param(floor, "RF_Base_Marker_ID", "")
             if not ok_marker:
-                raise Exception("Не удалось очистить FP_ID_МаркераБазы")
+                raise Exception("Не удалось очистить RF_Base_Marker_ID")
 
         # Пересоздать контурные линии последними — чтобы они были поверх сетки
         contour_recreated = _recreate_contour_on_top(floor, view, update_style)

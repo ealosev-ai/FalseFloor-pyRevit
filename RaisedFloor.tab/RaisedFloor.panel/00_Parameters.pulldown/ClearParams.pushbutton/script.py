@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Вычистить FP_ — удаляет все FP_-параметры из текущего документа.
+"""Вычистить RF_ — удаляет все RF_ parameters из текущего документа.
 
-В редакторе семейства: удаляет FP_-параметры из текущего семейства.
-В проекте: удаляет FP_-привязки из проекта через Revit API.
+В редакторе семейства: удаляет RF_ parameters из текущего семейства.
+В проекте: удаляет RF_ bindings из проекта через Revit API.
 Определения в файле общих параметров (ФОП) не затрагиваются.
 """
 
@@ -38,12 +38,12 @@ def _confirm_hard_delete(scope_label, count, names):
 
 
 def _clean_family():
-    """Удаляет все FP_-параметры из текущего документа семейства."""
+    """Удаляет все RF_ parameters из текущего документа семейства."""
     fam_mgr = doc.FamilyManager
 
     fp_params = []
     for p in fam_mgr.GetParameters():
-        if p.Definition.Name.startswith("FP_"):
+        if p.Definition.Name.startswith("RF_"):
             fp_params.append(p)
 
     if not fp_params:
@@ -58,7 +58,7 @@ def _clean_family():
     removed = []
     errors = []
 
-    t = Transaction(doc, "Remove FP params")
+    t = Transaction(doc, "Remove RF params")
     t.Start()
     try:
         for p in fp_params:
@@ -83,7 +83,7 @@ def _clean_family():
 
 
 def _clean_project():
-    """Удаляет все FP_-привязки параметров из проекта через API."""
+    """Удаляет все RF_ bindings параметров из проекта через API."""
     bm = doc.ParameterBindings
     it = bm.ForwardIterator()
     it.Reset()
@@ -91,7 +91,7 @@ def _clean_project():
     fp_defs = []
     while it.MoveNext():
         defn = it.Key
-        if defn and defn.Name and defn.Name.startswith("FP_"):
+        if defn and defn.Name and defn.Name.startswith("RF_"):
             fp_defs.append(defn)
 
     if not fp_defs:
@@ -106,7 +106,7 @@ def _clean_project():
     removed = []
     errors = []
 
-    with revit.Transaction("Remove FP params"):
+    with revit.Transaction("Remove RF params"):
         for defn in fp_defs:
             name = defn.Name
             try:

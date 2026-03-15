@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Удаление всех стрингеров, размещённых скриптом."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
@@ -34,8 +34,8 @@ try:
     if not floor:
         raise Exception(tr("source_floor_not_found"))
 
-    upper_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Лонжеронов_Верх"))
-    lower_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Лонжеронов_Низ"))
+    upper_ids = parse_ids_from_string(get_string_param(floor, "RF_Stringers_Top_ID"))
+    lower_ids = parse_ids_from_string(get_string_param(floor, "RF_Stringers_Bottom_ID"))
     all_ids = list(set(upper_ids + lower_ids))
 
     if not all_ids:
@@ -66,8 +66,8 @@ try:
                     deleted += 1
             except Exception:
                 pass
-        set_string_param(floor, "FP_ID_Лонжеронов_Верх", "")
-        set_string_param(floor, "FP_ID_Лонжеронов_Низ", "")
+        set_string_param(floor, "RF_Stringers_Top_ID", "")
+        set_string_param(floor, "RF_Stringers_Bottom_ID", "")
 
     forms.alert(tr("del_done_longerons", count=deleted), title=TITLE)
 

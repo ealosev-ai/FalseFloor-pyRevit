@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import Family, FilteredElementCollector, ViewPlan  # type: ignore
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
@@ -54,19 +54,19 @@ try:
         raise Exception(tr("source_floor_not_found"))
 
     # Запоминаем текущее смещение до оптимизации
-    cur_sx = get_double_param(floor, "FP_Смещение_X")
-    cur_sy = get_double_param(floor, "FP_Смещение_Y")
+    cur_sx = get_double_param(floor, "RF_Offset_X")
+    cur_sy = get_double_param(floor, "RF_Offset_Y")
     cur_sx_mm = round(internal_to_mm(cur_sx)) if cur_sx else 0.0
     cur_sy_mm = round(internal_to_mm(cur_sy)) if cur_sy else 0.0
 
     # Зазор от рёбер вырезов = макс. ширина профиля стрингера
     _stringer_clearance_mm = 0
     for fam in FilteredElementCollector(doc).OfClass(Family):
-        if fam.Name == "ФП_Лонжерон":
+        if fam.Name == "RF_Stringer":
             for sid in fam.GetFamilySymbolIds():
                 sym = doc.GetElement(sid)
                 if sym:
-                    pw = get_double_param(sym, "FP_Ширина_Профиля")
+                    pw = get_double_param(sym, "RF_Profile_Width")
                     if pw:
                         pw_mm = internal_to_mm(pw)
                         if pw_mm > _stringer_clearance_mm:
@@ -142,8 +142,8 @@ try:
         raise Exception(_CANCELLED)
 
     with revit.Transaction(tr("tx_apply_shift")):
-        ok_x = set_double_param(floor, "FP_Смещение_X", best["shift_x_internal"])
-        ok_y = set_double_param(floor, "FP_Смещение_Y", best["shift_y_internal"])
+        ok_x = set_double_param(floor, "RF_Offset_X", best["shift_x_internal"])
+        ok_y = set_double_param(floor, "RF_Offset_Y", best["shift_y_internal"])
 
         if not ok_x or not ok_y:
             raise Exception(tr("shift_write_failed"))

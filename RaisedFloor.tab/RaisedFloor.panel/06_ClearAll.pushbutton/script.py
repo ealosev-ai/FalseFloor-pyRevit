@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Удаление ВСЕХ элементов фальшпола: плитки, стрингеры, стойки, сетка, контур."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
@@ -23,16 +23,16 @@ _CANCELLED = "@@CANCELLED@@"
 
 # Параметры → какие ID хранят элементы фальшпола
 _PARAM_MAP = [
-    ("FP_ID_Стоек", "label_supports"),
-    ("FP_ID_Лонжеронов_Верх", "label_longerons_upper"),
-    ("FP_ID_Лонжеронов_Низ", "label_longerons_lower"),
-    ("FP_ID_Плиток", "label_tiles"),
-    ("FP_ID_ЛинийСетки", "label_grid_lines"),
-    ("FP_ID_МаркераБазы", "label_base_marker"),
-    ("FP_ID_ЛинийКонтура", "label_contour_lines"),
+    ("RF_Supports_ID", "label_supports"),
+    ("RF_Stringers_Top_ID", "label_longerons_upper"),
+    ("RF_Stringers_Bottom_ID", "label_longerons_lower"),
+    ("RF_Tiles_ID", "label_tiles"),
+    ("RF_Grid_Lines_ID", "label_grid_lines"),
+    ("RF_Base_Marker_ID", "label_base_marker"),
+    ("RF_Contour_Lines_ID", "label_contour_lines"),
 ]
 
-_PARAM_ZONES = "FP_ЗоныУсиления_JSON"
+_PARAM_ZONES = "RF_Reinf_Zones_JSON"
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)

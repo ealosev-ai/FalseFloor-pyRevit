@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Удаление всех плиток, размещённых скриптом."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
@@ -34,7 +34,7 @@ try:
     if not floor:
         raise Exception(tr("source_floor_not_found"))
 
-    old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_Плиток"))
+    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Tiles_ID"))
     if not old_ids:
         forms.alert(tr("del_not_found_tiles"), title=TITLE)
         raise Exception(_CANCELLED)
@@ -58,7 +58,7 @@ try:
                     deleted += 1
             except Exception:
                 pass
-        set_string_param(floor, "FP_ID_Плиток", "")
+        set_string_param(floor, "RF_Tiles_ID", "")
 
     forms.alert(tr("del_done_tiles", count=deleted), title=TITLE)
 

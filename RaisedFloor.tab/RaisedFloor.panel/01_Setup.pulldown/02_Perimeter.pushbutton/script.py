@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import (  # type: ignore
     Color,
@@ -29,7 +29,7 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-CONTOUR_STYLE_NAME = "ФП_Контур"
+CONTOUR_STYLE_NAME = "RF_Contour"
 CONTOUR_COLOR = Color(0, 255, 0)  # ярко-зелёный
 
 
@@ -71,7 +71,7 @@ def get_top_face_and_loops(floor):
 
 
 def _collect_styled_contour_ids(style_id):
-    """Собирает Id всех CurveElement со стилем ФП_Контур."""
+    """Собирает Id всех CurveElement со стилем RF_Contour."""
     ids = []
     if not style_id:
         return ids
@@ -123,7 +123,7 @@ try:
         raise Exception("Top face or loops not found")
 
     # ID для удаления: сохранённые + fallback по стилю
-    old_ids = parse_ids_from_string(get_string_param(floor, "FP_ID_ЛинийКонтура"))
+    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
     style_id = get_line_style_id(doc, CONTOUR_STYLE_NAME)
     styled_ids = _collect_styled_contour_ids(style_id) if style_id else []
 
@@ -153,7 +153,7 @@ try:
                     pass
 
         ids_string = ";".join(created_ids)
-        ok = set_string_param(floor, "FP_ID_ЛинийКонтура", ids_string)
+        ok = set_string_param(floor, "RF_Contour_Lines_ID", ids_string)
         if not ok:
             raise Exception(tr("contour_write_failed"))
 

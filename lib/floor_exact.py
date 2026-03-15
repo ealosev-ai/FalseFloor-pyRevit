@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 import math
 import os
@@ -380,11 +380,11 @@ def bbox_intersects(a, b, tol=_BBOX_TOL_MM):
 
 
 def get_exact_zone_for_floor(doc, floor):
-    contour_ids_string = get_string_param(floor, "FP_ID_ЛинийКонтура")
+    contour_ids_string = get_string_param(floor, "RF_Contour_Lines_ID")
     contour_ids = parse_ids_from_string(contour_ids_string)
     if not contour_ids:
         raise Exception(
-            "На перекрытии нет FP_ID_ЛинийКонтура. Сначала запусти 'Контур'."
+            "На перекрытии нет RF_Contour_Lines_ID. Сначала запусти 'Контур'."
         )
 
     contour_elements = []
@@ -536,8 +536,8 @@ def analyze_cell_exact(
         min_x, min_y, max_x, max_y = paths64_bbox_mm(current)
         if min_x is None or min_y is None or max_x is None or max_y is None:
             return {
-                "state": "Полная",
-                "kind": "Полная",
+                "state": "Full",
+                "kind": "Full",
                 "area_mm2": inter_area_mm2,
                 "size_x_mm": 0.0,
                 "size_y_mm": 0.0,
@@ -551,8 +551,8 @@ def analyze_cell_exact(
             }
 
         return {
-            "state": "Полная",
-            "kind": "Полная",
+            "state": "Full",
+            "kind": "Full",
             "area_mm2": inter_area_mm2,
             "size_x_mm": normalize_mm(max_x - min_x),
             "size_y_mm": normalize_mm(max_y - min_y),
@@ -625,8 +625,8 @@ def analyze_cell_exact(
     is_full = abs(area_mm2 - cell_area_mm2) <= area_equal_tol_mm2
     if is_full:
         return {
-            "state": "Полная",
-            "kind": "Полная",
+            "state": "Full",
+            "kind": "Full",
             "area_mm2": area_mm2,
             "size_x_mm": size_x_mm,
             "size_y_mm": size_y_mm,
@@ -651,7 +651,7 @@ def analyze_cell_exact(
         min_width_mm = _scan_min_width_mm(current)
 
     return {
-        "state": "Подрезка",
+        "state": "SimpleCut",
         "kind": kind,
         "area_mm2": area_mm2,
         "size_x_mm": size_x_mm,

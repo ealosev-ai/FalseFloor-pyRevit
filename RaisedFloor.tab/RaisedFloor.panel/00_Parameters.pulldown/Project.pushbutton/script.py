@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
-"""00 Параметры — добавляет все FP_-параметры в проект.
+﻿# -*- coding: utf-8 -*-
+"""00 Параметры — добавляет все RF_ parameters в проект.
 
 Проверяет наличие параметров на нужных категориях и добавляет
 недостающие через ProjectParameter API.
@@ -33,197 +33,197 @@ _CATS_FLOORS_GENERIC = [BuiltInCategory.OST_Floors, BuiltInCategory.OST_GenericM
 
 PARAM_DEFS = [
     # ── Параметры перекрытия (instance) ──
-    ("FP_Шаг_X", StorageType.Double, "Шаг сетки по X (ft)", _CATS_FLOORS, True),
-    ("FP_Шаг_Y", StorageType.Double, "Шаг сетки по Y (ft)", _CATS_FLOORS, True),
-    ("FP_База_X", StorageType.Double, "Базовая точка X (ft)", _CATS_FLOORS, True),
-    ("FP_База_Y", StorageType.Double, "Базовая точка Y (ft)", _CATS_FLOORS, True),
-    ("FP_База_Z", StorageType.Double, "Базовая точка Z (ft)", _CATS_FLOORS, True),
+    ("RF_Step_X", StorageType.Double, "Шаг сетки по X (ft)", _CATS_FLOORS, True),
+    ("RF_Step_Y", StorageType.Double, "Шаг сетки по Y (ft)", _CATS_FLOORS, True),
+    ("RF_Base_X", StorageType.Double, "Базовая точка X (ft)", _CATS_FLOORS, True),
+    ("RF_Base_Y", StorageType.Double, "Базовая точка Y (ft)", _CATS_FLOORS, True),
+    ("RF_Base_Z", StorageType.Double, "Базовая точка Z (ft)", _CATS_FLOORS, True),
     (
-        "FP_Смещение_X",
+        "RF_Offset_X",
         StorageType.Double,
         "Оптимальное смещение X (ft)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_Смещение_Y",
+        "RF_Offset_Y",
         StorageType.Double,
         "Оптимальное смещение Y (ft)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_Высота_Фальшпола",
+        "RF_Floor_Height",
         StorageType.Double,
         "Полная высота фальшпола (ft)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_Толщина_Плитки",
+        "RF_Tile_Thickness",
         StorageType.Double,
         "Толщина плитки (ft)",
         _CATS_FLOORS,
         True,
     ),
-    ("FP_Статус_Генерации", StorageType.String, "Статус генерации", _CATS_FLOORS, True),
+    ("RF_Gen_Status", StorageType.String, "Статус генерации", _CATS_FLOORS, True),
     (
-        "FP_ID_ЛинийКонтура",
+        "RF_Contour_Lines_ID",
         StorageType.String,
         "ID линий контура (;)",
         _CATS_FLOORS,
         True,
     ),
-    ("FP_ID_ЛинийСетки", StorageType.String, "ID линий сетки (;)", _CATS_FLOORS, True),
-    ("FP_ID_МаркераБазы", StorageType.String, "ID маркера базы", _CATS_FLOORS, True),
+    ("RF_Grid_Lines_ID", StorageType.String, "ID линий сетки (;)", _CATS_FLOORS, True),
+    ("RF_Base_Marker_ID", StorageType.String, "ID маркера базы", _CATS_FLOORS, True),
     (
-        "FP_ID_Плиток",
+        "RF_Tiles_ID",
         StorageType.String,
         "ID размещённых плиток (;)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_ID_Лонжеронов_Верх",
+        "RF_Stringers_Top_ID",
         StorageType.String,
         "ID верхних лонжеронов (;)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_ID_Лонжеронов_Низ",
+        "RF_Stringers_Bottom_ID",
         StorageType.String,
         "ID нижних лонжеронов (;)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_ЗоныУсиления_JSON",
+        "RF_Reinf_Zones_JSON",
         StorageType.String,
         "JSON зон усиления лонжеронов",
         _CATS_FLOORS,
         True,
     ),
-    ("FP_ID_Стоек", StorageType.String, "ID стоек (;)", _CATS_FLOORS, True),
+    ("RF_Supports_ID", StorageType.String, "ID стоек (;)", _CATS_FLOORS, True),
     (
-        "FP_Режим_Нижних",
+        "RF_Bottom_Mode",
         StorageType.String,
         "Режим размещения нижних",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_Шаг_Нижних",
+        "RF_Bottom_Step",
         StorageType.String,
         "Шаг нижних лонжеронов (мм)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_Макс_Длина_Лонжерона",
+        "RF_Max_Stringer_Len",
         StorageType.String,
         "Макс. длина лонжерона (мм)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "FP_Направление_Верхних",
+        "RF_Top_Direction",
         StorageType.String,
         "Направление верхних (X/Y)",
         _CATS_FLOORS,
         True,
     ),
     # ── Параметры экземпляра (Generic Model — плитки, лонжероны, стойки) ──
-    ("FP_Колонка", StorageType.Integer, "Колонка в сетке", _CATS_GENERIC, True),
-    ("FP_Ряд", StorageType.Integer, "Ряд в сетке", _CATS_GENERIC, True),
-    ("FP_Марка", StorageType.String, "Марка элемента ФП", _CATS_GENERIC, True),
+    ("RF_Column", StorageType.Integer, "Колонка в сетке", _CATS_GENERIC, True),
+    ("RF_Row", StorageType.Integer, "Ряд в сетке", _CATS_GENERIC, True),
+    ("RF_Mark", StorageType.String, "Марка элемента ФП", _CATS_GENERIC, True),
     (
-        "FP_Тип_Плитки",
+        "RF_Tile_Type",
         StorageType.String,
         "Тип плитки (Полная/Подрезка/Сложная)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Подрезка_X",
+        "RF_Cut_X",
         StorageType.Double,
         "Размер подрезки X (ft)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Подрезка_Y",
+        "RF_Cut_Y",
         StorageType.Double,
         "Размер подрезки Y (ft)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Тип_Лонжерона",
+        "RF_Stringer_Type",
         StorageType.String,
         "Тип лонжерона (Верхний/Нижний)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Ось_Направления",
+        "RF_Direction_Axis",
         StorageType.String,
         "Ось направления (X/Y)",
         _CATS_GENERIC,
         True,
     ),
-    ("FP_Высота_Стойки", StorageType.Double, "Высота стойки (ft)", _CATS_GENERIC, True),
+    ("RF_Support_Height", StorageType.Double, "Высота стойки (ft)", _CATS_GENERIC, True),
     (
-        "FP_Вентилируемая",
+        "RF_Ventilated",
         StorageType.Integer,
         "Вентилируемая плитка (0/1)",
         _CATS_GENERIC,
         True,
     ),
     # ── Вырезы плитки (до 3 void) ──
-    ("FP_Вырез_X", StorageType.Double, "Ширина выреза 1 (ft)", _CATS_GENERIC, True),
-    ("FP_Вырез_Y", StorageType.Double, "Высота выреза 1 (ft)", _CATS_GENERIC, True),
+    ("RF_Void1_X", StorageType.Double, "Ширина выреза 1 (ft)", _CATS_GENERIC, True),
+    ("RF_Void1_Y", StorageType.Double, "Высота выреза 1 (ft)", _CATS_GENERIC, True),
     (
-        "FP_Вырез_Смещ_X",
+        "RF_Void1_OX",
         StorageType.Double,
         "Смещение выреза 1 по X (ft)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Вырез_Смещ_Y",
+        "RF_Void1_OY",
         StorageType.Double,
         "Смещение выреза 1 по Y (ft)",
         _CATS_GENERIC,
         True,
     ),
-    ("FP_Вырез2_X", StorageType.Double, "Ширина выреза 2 (ft)", _CATS_GENERIC, True),
-    ("FP_Вырез2_Y", StorageType.Double, "Высота выреза 2 (ft)", _CATS_GENERIC, True),
+    ("RF_Void2_X", StorageType.Double, "Ширина выреза 2 (ft)", _CATS_GENERIC, True),
+    ("RF_Void2_Y", StorageType.Double, "Высота выреза 2 (ft)", _CATS_GENERIC, True),
     (
-        "FP_Вырез2_Смещ_X",
+        "RF_Void2_OX",
         StorageType.Double,
         "Смещение выреза 2 по X (ft)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Вырез2_Смещ_Y",
+        "RF_Void2_OY",
         StorageType.Double,
         "Смещение выреза 2 по Y (ft)",
         _CATS_GENERIC,
         True,
     ),
-    ("FP_Вырез3_X", StorageType.Double, "Ширина выреза 3 (ft)", _CATS_GENERIC, True),
-    ("FP_Вырез3_Y", StorageType.Double, "Высота выреза 3 (ft)", _CATS_GENERIC, True),
+    ("RF_Void3_X", StorageType.Double, "Ширина выреза 3 (ft)", _CATS_GENERIC, True),
+    ("RF_Void3_Y", StorageType.Double, "Высота выреза 3 (ft)", _CATS_GENERIC, True),
     (
-        "FP_Вырез3_Смещ_X",
+        "RF_Void3_OX",
         StorageType.Double,
         "Смещение выреза 3 по X (ft)",
         _CATS_GENERIC,
         True,
     ),
     (
-        "FP_Вырез3_Смещ_Y",
+        "RF_Void3_OY",
         StorageType.Double,
         "Смещение выреза 3 по Y (ft)",
         _CATS_GENERIC,
@@ -231,36 +231,36 @@ PARAM_DEFS = [
     ),
     # ── Параметры типоразмера (Generic Model — type) ──
     (
-        "FP_Высота_Профиля",
+        "RF_Profile_Height",
         StorageType.Double,
         "Высота профиля (ft)",
         _CATS_GENERIC,
         False,
     ),
     (
-        "FP_Ширина_Профиля",
+        "RF_Profile_Width",
         StorageType.Double,
         "Ширина профиля (ft)",
         _CATS_GENERIC,
         False,
     ),
-    ("FP_Толщина", StorageType.Double, "Толщина элемента (ft)", _CATS_GENERIC, False),
+    ("RF_Thickness", StorageType.Double, "Толщина элемента (ft)", _CATS_GENERIC, False),
     (
-        "FP_Толщина_Стенки",
+        "RF_Wall_Thickness",
         StorageType.Double,
         "Толщина стенки профиля (ft)",
         _CATS_GENERIC,
         False,
     ),
     (
-        "FP_Размер_Опоры",
+        "RF_Base_Size",
         StorageType.Double,
         "Размер опорной площадки (ft)",
         _CATS_GENERIC,
         False,
     ),
     (
-        "FP_Размер_Оголовка",
+        "RF_Head_Size",
         StorageType.Double,
         "Размер оголовка стойки (ft)",
         _CATS_GENERIC,
@@ -370,16 +370,16 @@ _DOUBLE_PARAM_NAMES = set(
 _ACTUAL_PARAM_NAMES = set(name for name, _, _, _, _ in PARAM_DEFS)
 
 # Префикс «наших» параметров
-_FP_PREFIX = "FP_"
+_RF_PREFIX = "RF_"
 
 
 try:
     existing = _get_existing_bindings()
 
-    # ── Определяем устаревшие FP_-параметры (есть в проекте, нет в PARAM_DEFS) ──
+    # ── Определяем устаревшие RF_ parameters (есть в проекте, нет в PARAM_DEFS) ──
     obsolete = []
     for name in existing:
-        if name.startswith(_FP_PREFIX) and name not in _ACTUAL_PARAM_NAMES:
+        if name.startswith(_RF_PREFIX) and name not in _ACTUAL_PARAM_NAMES:
             obsolete.append(name)
 
     # ── Определяем, какие параметры нужно пересоздать (неправильный тип) ──
@@ -462,7 +462,7 @@ try:
 
         # ── Шаг 1: удалить привязки параметров с неправильным типом ──
         if wrong_type:
-            with revit.Transaction("Remove FP_ wrong-type params"):
+            with revit.Transaction("Remove RF_ wrong-type params"):
                 bm = doc.ParameterBindings
                 for name in wrong_type:
                     defn = existing.get(name)
@@ -477,7 +477,7 @@ try:
         original_sp_path = app.SharedParametersFilename or ""
         temp_path = os.path.join(
             os.environ.get("TEMP", os.path.expanduser("~")),
-            "FP_TempParams_{}.txt".format(os.getpid()),
+            "RF_TempParams_{}.txt".format(os.getpid()),
         )
         try:
             # Записать минимальный заголовок
@@ -496,14 +496,14 @@ try:
             if not tmp_sp_file:
                 raise Exception(tr("proj_temp_file_failed"))
 
-            GROUP_NAME = "Фальшпол"
+            GROUP_NAME = "RaisedFloor"
             dg = tmp_sp_file.Groups.Create(GROUP_NAME)
 
             added = []
             errors = []
             data_group_id = _get_data_group_id()
 
-            with revit.Transaction("Add FP_ parameters"):
+            with revit.Transaction("Add RF_ parameters"):
                 for name, st, desc, cats, is_instance in needed:
                     try:
                         param_type = _storage_to_param_type(st)

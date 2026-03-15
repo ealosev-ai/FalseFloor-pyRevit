@@ -1,4 +1,4 @@
-# RaisedFloor.extension
+﻿# RaisedFloor.extension
 
 RU: pyRevit-расширение для раскладки фальшпола по точному контуру зоны.
 
@@ -32,9 +32,9 @@ RU:
 1. Добавьте путь к папке RaisedFloor.extension в pyRevit: Extensions -> Add Folder.
 2. Выполните Reload pyRevit.
 3. Загрузите семейства из папки Families:
-    - ФП_Плитка.rfa
-    - ФП_Лонжерон.rfa (стрингер)
-    - ФП_Стойка.rfa
+    - RF_Tile.rfa
+    - RF_Stringer.rfa (стрингер)
+    - RF_Support.rfa
 4. Откройте вкладку Фальшпол.
 5. Для подробной инструкции используйте кнопку 7 Справка или файл RaisedFloor.tab/RaisedFloor.panel/README.md.
 
@@ -43,9 +43,9 @@ EN:
 1. Add the RaisedFloor.extension folder to pyRevit: Extensions -> Add Folder.
 2. Run Reload pyRevit.
 3. Load the family files from Families:
-    - ФП_Плитка.rfa
-    - ФП_Лонжерон.rfa (stringer)
-    - ФП_Стойка.rfa
+    - RF_Tile.rfa
+    - RF_Stringer.rfa (stringer)
+    - RF_Support.rfa
 4. Open the Фальшпол tab.
 5. Use the 7 Справка button or RaisedFloor.tab/RaisedFloor.panel/README.md for the full guide.
 
@@ -100,10 +100,11 @@ RU:
 | Папки расширения | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` | Инфраструктура pyRevit, видна разработчику |
 | Кнопки на ленте Revit | RU | Стрингеры, Плитки | Через bundle.yaml, видны пользователю |
 | Диалоги и сообщения | RU/EN авто | `tr("shift_done")` | Определяется по языку системы |
-| Семейства .rfa | RU | ФП_Плитка, ФП_Лонжерон | Имя семейства = имя файла, живёт в модели Revit |
-| Параметры Revit | RU | FP_Шаг_X, FP_ID_Лонжеронов_Верх | Привязаны к проекту, видны в спецификациях |
+| Семейства .rfa | RU | RF_Tile, RF_Stringer | Имя семейства = имя файла, живёт в модели Revit |
+| Параметры Revit | RU | RF_Step_X, RF_Stringers_Top_ID | Привязаны к проекту, видны в спецификациях |
 
 Почему семейства и параметры остаются на русском:
+
 - Имя семейства в Revit берётся из имени .rfa файла. Переименование ломает существующие проекты.
 - Параметры навсегда привязаны к модели. Динамический перевод невозможен.
 - Целевая аудитория — русскоязычные инженеры. Русские имена параметров понятны сразу.
@@ -118,10 +119,11 @@ The extension uses a **bilingual naming scheme**:
 | Extension folders | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` | pyRevit infrastructure, seen by developers |
 | Ribbon buttons | RU | Стрингеры, Плитки | Via bundle.yaml, seen by end users |
 | Dialogs & messages | RU/EN auto | `tr("shift_done")` | Detected from system locale |
-| Families .rfa | RU | ФП_Плитка, ФП_Лонжерон | Family name = filename, lives in Revit model |
-| Revit parameters | RU | FP_Шаг_X, FP_ID_Лонжеронов_Верх | Bound to project, visible in schedules/filters |
+| Families .rfa | RU | RF_Tile, RF_Stringer | Family name = filename, lives in Revit model |
+| Revit parameters | RU | RF_Step_X, RF_Stringers_Top_ID | Bound to project, visible in schedules/filters |
 
 Why families and parameters stay in Russian:
+
 - Revit family name = the .rfa filename at load time. Renaming breaks existing projects.
 - Parameters are permanently bound in the model. No dynamic translation is possible.
 - Target audience is Russian-speaking engineers. Russian param names are immediately clear.

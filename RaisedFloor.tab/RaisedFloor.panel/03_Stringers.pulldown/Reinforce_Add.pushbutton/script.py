@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Лонжероны: добавить зону усиления (Линия / Прямоугольник)."""
 
 import math
@@ -42,13 +42,13 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = "Усиление: добавить"
-FAMILY_LONGERON = "ФП_Лонжерон"
-FAMILY_SUPPORT = "ФП_Стойка"
-PARAM_ZONES = "FP_ЗоныУсиления_JSON"
+FAMILY_LONGERON = "RF_Stringer"
+FAMILY_SUPPORT = "RF_Support"
+PARAM_ZONES = "RF_Reinf_Zones_JSON"
 TOL = 1e-6
 DEFAULT_SUPPORT_SPACING_MM = 1000.0
-PREVIEW_STYLE_UPPER = "ФП_Превью_Верх"
-PREVIEW_STYLE_LOWER = "ФП_Превью_Низ"
+PREVIEW_STYLE_UPPER = "RF_Preview_Top"
+PREVIEW_STYLE_LOWER = "RF_Preview_Bottom"
 
 
 class _Cancel(Exception):
@@ -333,7 +333,7 @@ def _snap_range_to_crossings(a, b, crossings):
 
 
 def _read_max_len_from_floor(floor):
-    mm = get_mm_param(floor, "FP_Макс_Длина_Лонжерона", 4000.0)
+    mm = get_mm_param(floor, "RF_Max_Stringer_Len", 4000.0)
     return mm_to_internal(max(100.0, mm))
 
 
@@ -369,13 +369,13 @@ def _layer_axes(floor):
     upper_axis = None
     lower_axis = None
 
-    upper_saved = get_string_param(floor, "FP_Направление_Верхних")
+    upper_saved = get_string_param(floor, "RF_Top_Direction")
     if upper_saved in ("X", "Y"):
         upper_axis = upper_saved
         lower_axis = "Y" if upper_axis == "X" else "X"
 
-    upper_segs = _read_layer_segments_from_ids("FP_ID_Лонжеронов_Верх")
-    lower_segs = _read_layer_segments_from_ids("FP_ID_Лонжеронов_Низ")
+    upper_segs = _read_layer_segments_from_ids("RF_Stringers_Top_ID")
+    lower_segs = _read_layer_segments_from_ids("RF_Stringers_Bottom_ID")
 
     up_seg_axis = _get_axis_from_segments(upper_segs)
     lo_seg_axis = _get_axis_from_segments(lower_segs)
@@ -459,8 +459,8 @@ def _get_longeron_symbols(layer_mode):
         raise Exception("Семейство '{}' не найдено".format(FAMILY_LONGERON))
     names = sorted(symbols.keys())
 
-    need_upper = layer_mode in ("Оба слоя", "Верхний")
-    need_lower = layer_mode in ("Оба слоя", "Нижний")
+    need_upper = layer_mode in ("Оба слоя", "Upper")
+    need_lower = layer_mode in ("Оба слоя", "Lower")
     sym_upper = None
     sym_lower = None
 
@@ -499,13 +499,13 @@ def _get_support_symbol():
 
 def _calc_z_offsets(floor, level, sym_upper, sym_lower):
     ph_upper = (
-        (get_double_param(sym_upper, "FP_Высота_Профиля") or 0.0) if sym_upper else 0.0
+        (get_double_param(sym_upper, "RF_Profile_Height") or 0.0) if sym_upper else 0.0
     )
     ph_lower = (
-        (get_double_param(sym_lower, "FP_Высота_Профиля") or 0.0) if sym_lower else 0.0
+        (get_double_param(sym_lower, "RF_Profile_Height") or 0.0) if sym_lower else 0.0
     )
-    total_h = get_double_param(floor, "FP_Высота_Фальшпола") or 0.0
-    tile_t = get_double_param(floor, "FP_Толщина_Плитки") or 0.0
+    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
+    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
     bbox = get_bbox_xy(floor, view)
     if not bbox or len(bbox) < 6:
         raise Exception("get_bbox_xy: неожиданный формат")
@@ -532,9 +532,9 @@ def _place_longerons(segs, symbol, level, z0, dz, prefix, axis_label, zone_id):
             ElementTransformUtils.MoveElement(doc, inst.Id, XYZ(0, 0, dz))
 
         l_mm = int(round(internal_to_mm(line.Length)))
-        _set_param(inst, "FP_Тип_Лонжерона", "Верхний" if prefix == "УВ" else "Нижний")
-        _set_param(inst, "FP_Ось_Направления", axis_label)
-        _set_param(inst, "FP_Марка", "{}.{}.{}.{}мм".format(prefix, zone_id, i, l_mm))
+        _set_param(inst, "RF_Stringer_Type", "Upper" if prefix == "УВ" else "Lower")
+        _set_param(inst, "RF_Direction_Axis", axis_label)
+        _set_param(inst, "RF_Mark", "{}.{}.{}.{}мм".format(prefix, zone_id, i, l_mm))
         ids.append(str(_eid_int(inst.Id)))
     return ids
 
@@ -561,8 +561,8 @@ def _place_supports(nodes, symbol, level, z0, support_h, lower_axis, zone_id):
             axis = Line.CreateBound(XYZ(sx, sy, z0), XYZ(sx, sy, z0 + 1.0))
             ElementTransformUtils.RotateElement(doc, inst.Id, axis, angle)
         if support_h > 0:
-            _set_param(inst, "FP_Высота_Стойки", support_h)
-        _set_param(inst, "FP_Марка", "УС.{}.{}".format(zone_id, i))
+            _set_param(inst, "RF_Support_Height", support_h)
+        _set_param(inst, "RF_Mark", "УС.{}.{}".format(zone_id, i))
         ids.append(str(_eid_int(inst.Id)))
     return ids
 
@@ -573,12 +573,12 @@ def _line_mode_build(floor, upper_axis, lower_axis, upper_segs, lower_segs):
 
     layer = None
     if axis == lower_axis:
-        layer = "Нижний"
+        layer = "Lower"
     elif axis == upper_axis:
-        layer = "Верхний"
+        layer = "Upper"
     else:
         layer = forms.CommandSwitchWindow.show(
-            ["Верхний", "Нижний"], message="Слой линии:"
+            ["Upper", "Lower"], message="Слой линии:"
         )
         if not layer:
             raise _Cancel()
@@ -590,7 +590,7 @@ def _line_mode_build(floor, upper_axis, lower_axis, upper_segs, lower_segs):
         p_start, p_end = min(p1.Y, p2.Y), max(p1.Y, p2.Y)
         line_coord = (p1.X + p2.X) / 2.0
 
-    ref_coords = _layer_coords(lower_segs if layer == "Нижний" else upper_segs, axis)
+    ref_coords = _layer_coords(lower_segs if layer == "Lower" else upper_segs, axis)
     if not ref_coords:
         raise Exception("Нет существующих осей выбранного слоя для зеркалирования")
 
@@ -599,7 +599,7 @@ def _line_mode_build(floor, upper_axis, lower_axis, upper_segs, lower_segs):
     if mirror_axis is not None:
         mirror_coord = 2.0 * mirror_axis - line_coord
 
-    perp_segs = upper_segs if layer == "Нижний" else lower_segs
+    perp_segs = upper_segs if layer == "Lower" else lower_segs
     crossings_base = _crossings_for_axis_line(axis, line_coord, perp_segs)
     crossings_mirror = (
         _crossings_for_axis_line(axis, mirror_coord, perp_segs)
@@ -672,8 +672,8 @@ def _get_base_symbols(floor):
     sym_upper = sym_lower = support_sym = None
 
     for param_name, attr in [
-        ("FP_ID_Лонжеронов_Верх", "upper"),
-        ("FP_ID_Лонжеронов_Низ", "lower"),
+        ("RF_Stringers_Top_ID", "upper"),
+        ("RF_Stringers_Bottom_ID", "lower"),
     ]:
         ids = parse_ids_from_string(get_string_param(floor, param_name))
         for int_id in ids:
@@ -692,7 +692,7 @@ def _get_base_symbols(floor):
         if sym_upper and sym_lower:
             break
 
-    # Стойка — первый типоразмер семейства ФП_Стойка
+    # Стойка — первый типоразмер семейства RF_Support
     support_syms = _find_symbols(FAMILY_SUPPORT)
     if support_syms:
         support_sym = list(support_syms.values())[0]
@@ -712,7 +712,7 @@ def _rect_mode_build(floor, upper_axis, lower_axis, upper_base_segs, lower_base_
     x_min, y_min, x_max, y_max = rect
 
     # Текущий базовый шаг для подсказки
-    base_step_mm = max(100.0, float(get_mm_param(floor, "FP_Шаг_Нижних", 1200.0)))
+    base_step_mm = max(100.0, float(get_mm_param(floor, "RF_Bottom_Step", 1200.0)))
     default_reinforced = max(100.0, base_step_mm / 2.0)
 
     layer_choice = forms.CommandSwitchWindow.show(
@@ -844,12 +844,12 @@ def main():
     floor = _pick_floor()
 
     with revit.Transaction("Нормализовать параметры усиления"):
-        normalize_legacy_mm_param(floor, "FP_Шаг_Нижних")
-        normalize_legacy_mm_param(floor, "FP_Макс_Длина_Лонжерона")
+        normalize_legacy_mm_param(floor, "RF_Bottom_Step")
+        normalize_legacy_mm_param(floor, "RF_Max_Stringer_Len")
 
     if floor.LookupParameter(PARAM_ZONES) is None:
         forms.alert(
-            "Не найден параметр {}.\nСначала запусти 00 Параметры ФП.".format(
+            "Не найден параметр {}.\nСначала запусти 00 Параметры RF.".format(
                 PARAM_ZONES
             ),
             title=TITLE,
@@ -881,14 +881,14 @@ def main():
         )
         layer_mode = layer
         max_len = _read_max_len_from_floor(floor)
-        if layer == "Верхний":
-            sym_upper, _ = _get_longeron_symbols("Верхний")
+        if layer == "Upper":
+            sym_upper, _ = _get_longeron_symbols("Upper")
             upper_new = segs
             upper_new = _split_segments_with_positions(
                 upper_new, max_len, cut_positions
             )
         else:
-            _, sym_lower = _get_longeron_symbols("Нижний")
+            _, sym_lower = _get_longeron_symbols("Lower")
             support_symbol = _get_support_symbol()
             lower_new = segs
             lower_new = _split_segments_with_positions(
@@ -928,15 +928,15 @@ def main():
         floor, level, sym_upper, sym_lower
     )
 
-    total_h = get_double_param(floor, "FP_Высота_Фальшпола") or 0.0
-    tile_t = get_double_param(floor, "FP_Толщина_Плитки") or 0.0
+    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
+    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
     support_h = total_h - tile_t - ph_up - ph_low if total_h > 0 else 0.0
 
     support_ids = []
     support_nodes = []
     if lower_new and support_symbol is not None:
         max_sp = mm_to_internal(DEFAULT_SUPPORT_SPACING_MM)
-        base_size = get_double_param(support_symbol, "FP_Размер_Опоры") or 0.0
+        base_size = get_double_param(support_symbol, "RF_Base_Size") or 0.0
         support_nodes = _generate_support_nodes(lower_new, max_sp, base_size / 2.0)
 
     zone_id = datetime.now().strftime("ZU%Y%m%d%H%M%S")

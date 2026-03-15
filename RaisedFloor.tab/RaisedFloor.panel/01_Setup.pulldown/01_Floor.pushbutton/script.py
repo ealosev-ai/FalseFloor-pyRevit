@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import BuiltInCategory  # type: ignore
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
@@ -80,21 +80,21 @@ try:
 
     with revit.Transaction(tr("tx_prepare_floor")):
         pairs = [
-            ("FP_Шаг_X", mm_to_internal(step_x_mm)),
-            ("FP_Шаг_Y", mm_to_internal(step_y_mm)),
-            ("FP_Смещение_X", 0.0),
-            ("FP_Смещение_Y", 0.0),
-            ("FP_База_X", base_point.X),
-            ("FP_База_Y", base_point.Y),
-            ("FP_База_Z", base_point.Z),
-            ("FP_Высота_Фальшпола", mm_to_internal(height_mm)),
+            ("RF_Step_X", mm_to_internal(step_x_mm)),
+            ("RF_Step_Y", mm_to_internal(step_y_mm)),
+            ("RF_Offset_X", 0.0),
+            ("RF_Offset_Y", 0.0),
+            ("RF_Base_X", base_point.X),
+            ("RF_Base_Y", base_point.Y),
+            ("RF_Base_Z", base_point.Z),
+            ("RF_Floor_Height", mm_to_internal(height_mm)),
         ]
         for name, val in pairs:
             if not set_double_param(floor, name, val):
                 missing_params.append(name)
 
-        if not set_string_param(floor, "FP_Статус_Генерации", "Подготовлено"):
-            missing_params.append("FP_Статус_Генерации")
+        if not set_string_param(floor, "RF_Gen_Status", "Подготовлено"):
+            missing_params.append("RF_Gen_Status")
 
     # 5. Отчёт
     if missing_params:
