@@ -4,6 +4,13 @@ RU: pyRevit-расширение для раскладки фальшпола п
 
 EN: A pyRevit extension for raised-floor layout driven by the exact zone contour.
 
+## For English Users
+
+- Quick start: see the EN section below.
+- Detailed guide: Фальшпол.tab/Фальшпол.panel/README.md (EN section).
+- Issue template: ISSUE_REPORT.md.
+- Test plan: TESTPLAN.md.
+
 ## Compatibility
 
 RU:
