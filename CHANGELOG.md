@@ -30,4 +30,5 @@
 ### Notes
 
 - Families must be re-saved in Revit Family Editor with the new RF_ parameter names.
+- Families are not backward-compatible across Revit versions. If the package families are saved in Revit 2026, Revit 2024 cannot open them.
 - Runtime dialogs/reports are fully bilingual.

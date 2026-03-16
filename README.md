@@ -15,13 +15,17 @@ EN: A pyRevit extension for raised-floor layout driven by the exact zone contour
 
 RU:
 
-- Проверено в Revit: 2024, 2026.
+- Скрипты проверены в Revit: 2024, 2026.
+- Семейства в текущем ZIP сохранены в версии Revit 2026 и требуют Revit 2026.
+- Для поддержки Revit 2024 семейства нужно пересохранить в Revit 2024 и выпускать отдельный пакет или универсальный пакет из младшей версии.
 - Проверено в pyRevit: 6.1.0.x.
 - Для других версий нужна отдельная проверка.
 
 EN:
 
-- Verified in Revit: 2024, 2026.
+- Scripts are tested in Revit: 2024, 2026.
+- Families in the current ZIP are saved in Revit 2026 and therefore require Revit 2026.
+- To support Revit 2024, the families must be re-saved in Revit 2024 and shipped as a separate package or as a lowest-version universal package.
 - Verified in pyRevit: 6.1.0.x.
 - Other versions require separate validation.
 
