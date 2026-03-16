@@ -1,15 +1,17 @@
 ﻿# Changelog
 
-## 2026-03-15 (v1.2.0)
+## 2026-03-16 (v1.2.0)
 
 ### Added
 
 - Introduced a shared runtime localization layer in lib/floor_i18n.py with RU/EN dictionaries.
 - Added automatic UI language detection (CurrentUICulture) and optional override via RAISEDFLOOR_LANG.
 - Added a new Parameters command: UI Language (Auto/RU/EN) for runtime language switching.
+- MIT license.
 
 ### Changed
 
+- **Shift optimizer improvements**: practical cut rounding to 10 mm (CUT_ROUND_MM), contour rounding guards, improved pipeline validation.
 - **Renamed extension**: FalseFloor → RaisedFloor (correct English engineering term).
 - **Renamed all folders to English**: tab, panel, pulldowns, pushbuttons now use English names.
 - Russian UI titles preserved via bundle.yaml `title:` and `layout: [title:]` overrides.
@@ -21,6 +23,7 @@
   - Line styles: ФП_Сетка → RF_Grid, ФП_Контур → RF_Contour, etc.
   - Shared parameter group: Фальшпол → RaisedFloor
   - Parameter value strings: Верхний/Нижний → Upper/Lower, Полная/Подрезка/Сложная → Full/SimpleCut/ComplexCut
+- **Removed duplicate project parameters**: Generic Model params (RF_Column, RF_Void_*, etc.) now live only inside families, not as project parameter bindings.
 - Localized core user workflows to RU/EN.
 - Updated documentation to bilingual RU/EN format.
 
