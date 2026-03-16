@@ -303,7 +303,7 @@ _TEXT = {
         "help_html_title": "Справка: Фальшпол",
         # --- UI Language ---
         "ui_lang_title": "Язык UI",
-        "ui_lang_current": "Текущий режим: {mode}\nВыбери язык UI: Auto / RU / EN",
+        "ui_lang_current": "Текущий режим: {mode}",
         "ui_lang_auto_desc": "автоопределение по языку Revit/Windows",
         "ui_lang_ru_desc": "принудительно русский",
         "ui_lang_en_desc": "принудительно английский",
@@ -574,7 +574,7 @@ _TEXT = {
         "help_html_title": "Help: Raised Floor",
         # --- UI Language ---
         "ui_lang_title": "UI Language",
-        "ui_lang_current": "Current mode: {mode}\nSelect UI language: Auto / RU / EN",
+        "ui_lang_current": "Current mode: {mode}",
         "ui_lang_auto_desc": "auto-detect from Revit/Windows language",
         "ui_lang_ru_desc": "force Russian",
         "ui_lang_en_desc": "force English",
