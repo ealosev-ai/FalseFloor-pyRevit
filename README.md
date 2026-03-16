@@ -96,7 +96,7 @@ RU:
 Расширение использует **единую англоязычную схему именования** с префиксом `RF_`:
 
 | Слой | Язык | Пример |
-|---|---|---|
+| --- | --- | --- |
 | Папки расширения | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` |
 | Кнопки на ленте Revit | RU | Стрингеры, Плитки (через bundle.yaml) |
 | Диалоги и сообщения | RU/EN авто | `tr("shift_done")` |
@@ -110,7 +110,7 @@ EN:
 The extension uses a **unified English naming scheme** with the `RF_` prefix:
 
 | Layer | Language | Example |
-|---|---|---|
+| --- | --- | --- |
 | Extension folders | EN | `RaisedFloor.tab`, `03_Stringers.pulldown` |
 | Ribbon buttons | RU | Стрингеры, Плитки (via bundle.yaml) |
 | Dialogs & messages | RU/EN auto | `tr("shift_done")` |
