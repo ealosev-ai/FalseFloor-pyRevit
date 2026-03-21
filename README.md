@@ -30,31 +30,33 @@ EN:
 
 RU:
 
-```bash
-# 1. Клонировать в папку расширений pyRevit
-git clone https://github.com/ealosev-ai/RaisedFloor-pyRevit.git "%APPDATA%\pyRevit-Master\Extensions\RaisedFloor.extension"
+```powershell
+# Установить расширение (один раз)
+pyrevit extend ui RaisedFloor https://github.com/ealosev-ai/RaisedFloor-pyRevit.git --branch=main
 
-# 2. Добавить папку расширений в pyRevit (если не уже добавлена)
-pyrevit extensions paths add "%APPDATA%\pyRevit-Master\Extensions"
+# После установки перезапустить Revit — pyRevit подхватит расширение автоматически
+```
 
-# 3. Перезагрузить pyRevit
-pyrevit run reload
+```powershell
+# Обновление в любой момент
+pyrevit extensions update RaisedFloor
 ```
 
 EN:
 
-```bash
-# 1. Clone into pyRevit extensions folder
-git clone https://github.com/ealosev-ai/RaisedFloor-pyRevit.git "%APPDATA%\pyRevit-Master\Extensions\RaisedFloor.extension"
+```powershell
+# Install the extension (once)
+pyrevit extend ui RaisedFloor https://github.com/ealosev-ai/RaisedFloor-pyRevit.git --branch=main
 
-# 2. Register the extensions folder in pyRevit (if not already)
-pyrevit extensions paths add "%APPDATA%\pyRevit-Master\Extensions"
-
-# 3. Reload pyRevit
-pyrevit run reload
+# After install — restart Revit; pyRevit will pick up the extension automatically
 ```
 
-> **Обновление / Update:** `git pull` в папке `RaisedFloor.extension` → Reload pyRevit.
+```powershell
+# Update at any time
+pyrevit extensions update RaisedFloor
+```
+
+> **Примечание / Note:** `pyrevit extend ui` требует `pyrevit` в PATH (входит в стандартный инсталлятор pyRevit).
 
 ---
 
@@ -77,11 +79,13 @@ EN:
 ### Семейства / Families
 
 RU: Загрузите из папки `Families`:
+
 - `RF_Tile.rfa` — плитка
 - `RF_Stringer.rfa` — стрингер
 - `RF_Support.rfa` — стойка
 
 EN: Load from the `Families` folder:
+
 - `RF_Tile.rfa` — tile
 - `RF_Stringer.rfa` — stringer
 - `RF_Support.rfa` — support post
