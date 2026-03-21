@@ -280,6 +280,11 @@ def redraw_grid_for_floor(
             "Не удалось прочитать параметры:\n- {}".format("\n- ".join(missing))
         )
 
+    # type narrowing for Pylance (all None-checks above guarantee non-None here)
+    assert step_x is not None and step_y is not None
+    assert base_x_raw is not None and base_y_raw is not None
+    assert shift_x is not None and shift_y is not None
+
     if step_x <= 0 or step_y <= 0:
         raise Exception("Шаг сетки должен быть больше нуля.")
 
