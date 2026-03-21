@@ -465,7 +465,7 @@ def _process_family(family):
 
     except Exception as ex:
         # Гарантируем закрытие документа семейства при любой ошибке
-        if fam_doc and fam_doc.IsModified:
+        if fam_doc:
             try:
                 fam_doc.Close(False)
             except Exception:

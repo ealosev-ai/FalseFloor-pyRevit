@@ -193,8 +193,8 @@ def show_report_dialog(lines, title, yes_no=False):
         lines: list of items, each is either
             - a plain string  (rendered as normal text)
             - a tuple ``(text, style)`` where *style* is one of
-              ``STYLE_WARN``, ``STYLE_GOOD``, ``STYLE_HEADER``,
-              ``STYLE_DIM``, or ``None`` for default
+            ``STYLE_WARN``, ``STYLE_GOOD``, ``STYLE_HEADER``,
+            ``STYLE_DIM``, or ``None`` for default
             - an empty string ``""`` inserts a vertical spacer
         title:  window title bar text
         yes_no: ``True`` → show *Да / Нет* buttons and return bool;

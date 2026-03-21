@@ -26,8 +26,8 @@ Revit 2024 and Revit 2026.
 
 ### Revit-hosted contour
 
-- A pyRevit tests button already exists.
-- Current button behavior is still a lightweight mixed smoke/check script.
+- A pyRevit tests button is planned but not yet implemented.
+- Future button behavior will be a lightweight mixed smoke/check script.
 - Revit-specific tests are not yet organized into explicit suites by scope.
 - There is no formal separation yet between:
   - smoke tests in the current document

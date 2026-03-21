@@ -156,7 +156,7 @@ _RF_PREFIX = "RF_"
 
 
 try:
-    existing = _get_existing_bindings()
+    existing = _get_existing_bindings(doc)
 
     # ── Определяем устаревшие RF_ parameters (есть в проекте, нет в PARAM_DEFS) ──
     obsolete = []
@@ -293,7 +293,7 @@ try:
                         opts.Description = desc
                         defn = dg.Definitions.Create(opts)
 
-                        cat_set = _make_cat_set(cats)
+                        cat_set = _make_cat_set(doc, cats)
 
                         if is_instance:
                             binding = InstanceBinding(cat_set)
@@ -314,9 +314,8 @@ try:
                         errors.append("{}: {}".format(name, str(ex)))
 
         finally:
-            # Восстановить оригинальный файл
-            if original_sp_path:
-                app.SharedParametersFilename = original_sp_path
+            # Восстановить оригинальный файл (даже если был пустой)
+            app.SharedParametersFilename = original_sp_path
             # Удалить временный файл
             try:
                 os.remove(temp_path)

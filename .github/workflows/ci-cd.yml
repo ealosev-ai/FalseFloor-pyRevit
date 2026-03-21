@@ -90,11 +90,9 @@ jobs:
 
       - name: Run Ruff linter
         run: ruff check lib/ RaisedFloor.tab/ tests/
-        continue-on-error: true
 
       - name: Run Ruff formatter check
         run: ruff format --check lib/ RaisedFloor.tab/ tests/
-        continue-on-error: true
 
       - name: Run MyPy type checker
         run: mypy lib/ --ignore-missing-imports --no-error-summary

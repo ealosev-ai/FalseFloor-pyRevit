@@ -66,19 +66,21 @@ def _get_string_param(inst, name):
 
 
 def _find_vent_type(family):
-    """Ищет тип с 'Вент' в названии среди типов семейства."""
+    """Ищет тип с 'Вент'/'Vent' в названии среди типов семейства."""
     for sid in family.GetFamilySymbolIds():
         sym = doc.GetElement(sid)
-        if sym and "Vent" in sym.Name:
+        lower_name = (sym.Name or "").lower() if sym else ""
+        if sym and ("вент" in lower_name or "vent" in lower_name):
             return sym
     return None
 
 
 def _find_standard_type(family):
-    """Ищет стандартный (не вент) тип — первый без 'Вент' в названии."""
+    """Ищет стандартный (не вент) тип — первый без 'Вент'/'Vent' в названии."""
     for sid in family.GetFamilySymbolIds():
         sym = doc.GetElement(sid)
-        if sym and "Vent" not in sym.Name:
+        lower_name = (sym.Name or "").lower() if sym else ""
+        if sym and "вент" not in lower_name and "vent" not in lower_name:
             return sym
     return None
 

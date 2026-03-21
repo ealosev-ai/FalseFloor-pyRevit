@@ -2,6 +2,7 @@
 
 from Autodesk.Revit.DB import (  # type: ignore
     XYZ,
+    Element,
     ElementId,
     Family,
     FilteredElementCollector,
@@ -76,7 +77,8 @@ def _find_family_symbol(family_name):
                 except Exception:
                     name_str = Element.Name.GetValue(sym)
                 name_str = name_str or ""
-                if "вент" not in name_str.lower():
+                lower_name = name_str.lower()
+                if "вент" not in lower_name and "vent" not in lower_name:
                     return sym
                 if fallback is None:
                     fallback = sym
@@ -151,10 +153,11 @@ def _collect_vent_cells(old_ids):
 
 
 def _find_vent_symbol(family):
-    """Находит тип с 'Вент' в имени среди типов семейства."""
+    """Находит тип с 'Вент'/'Vent' в имени среди типов семейства."""
     for sid in family.GetFamilySymbolIds():
         sym = doc.GetElement(sid)
-        if sym and "Vent" in (sym.Name or ""):
+        lower_name = (sym.Name or "").lower() if sym else ""
+        if sym and ("вент" in lower_name or "vent" in lower_name):
             return sym
     return None
 

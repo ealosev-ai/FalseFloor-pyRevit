@@ -143,8 +143,6 @@ EN:
 - Руководство пользователя / User guide: `RaisedFloor.tab/RaisedFloor.panel/README.md`
 - Руководство разработчика / Developer guide: `docs/DEVELOPER_GUIDE.md`
 - История изменений / Changelog: `CHANGELOG.md`
-- Шаблон отчёта / Issue template: `ISSUE_REPORT.md`
-- План тестирования / Test plan: `TESTPLAN.md`
 
 ---
 
