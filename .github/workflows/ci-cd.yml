@@ -58,7 +58,7 @@ jobs:
 
       - name: Run pytest
         run: |
-          pytest tests/ -m "not revit" -v --tb=short --cov=lib --cov-report=term-missing
+          pytest tests/ -m "not revit" -v --tb=short --cov=lib --cov-report=term-missing --cov-report=xml
         env:
           PYTHONPATH: ${{ github.workspace }};${{ github.workspace }}/lib
 
@@ -112,7 +112,27 @@ jobs:
         run: |
           $timestamp = Get-Date -Format "yyyy-MM-dd"
           $archiveName = "RaisedFloor.extension-$timestamp.zip"
-          Compress-Archive -Path ./* -DestinationPath $archiveName -Force
+          $stageDir = Join-Path $PWD "_package"
+          if (Test-Path $stageDir) {
+            Remove-Item $stageDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+
+          # Runtime-only package for end users.
+          $items = @("lib", "RaisedFloor.tab", "Families", "README.md", "LICENSE", "CHANGELOG.md")
+          foreach ($item in $items) {
+            if (Test-Path $item) {
+              Copy-Item $item -Destination $stageDir -Recurse -Force
+            }
+          }
+
+          # Dev-only test runner button should not ship in production zip.
+          $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown"
+          if (Test-Path $testsPanel) {
+            Remove-Item $testsPanel -Recurse -Force
+          }
+
+          Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $archiveName -Force
           echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
         shell: pwsh
         working-directory: .

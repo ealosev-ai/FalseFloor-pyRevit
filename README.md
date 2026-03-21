@@ -57,6 +57,8 @@ pyrevit extensions update RaisedFloor
 ```
 
 > **Примечание / Note:** `pyrevit extend ui` требует `pyrevit` в PATH (входит в стандартный инсталлятор pyRevit).
+>
+> **Release package / Пакет релиза:** ZIP для конечного пользователя собирается как runtime-only (`lib/`, `RaisedFloor.tab/`, `Families/`). Каталоги `tests/`, `docs/` и dev-кнопка `99_Tests` в production ZIP не включаются.
 
 ---
 
@@ -206,7 +208,6 @@ py -3.11 -m venv .venv
 ```bash
 .venv\Scripts\python -m pytest tests/ -m "not revit" -v --cov=lib
 .venv\Scripts\python -m pytest tests/test_ribbon_smoke.py --no-cov -q
-.venv\Scripts\python run_smoke_tests.py
 ```
 
 ### Code quality
@@ -258,3 +259,4 @@ EN: The extension uses a **unified English naming scheme with the `RF_` prefix**
 ## Лицензия / License
 
 MIT — см. файл / see file [LICENSE](LICENSE).
+
