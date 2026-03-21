@@ -112,19 +112,22 @@ def format_shift_result_summary_line(result, index=None):
     if index is not None:
         prefix = "{}. ".format(index)
 
-    return tr(
-        "shift_summary_line",
-        prefix=prefix,
-        status=get_shift_quality_status(result),
-        x=result["shift_x_mm"],
-        y=result["shift_y_mm"],
-        complex=result["complex_count"],
-        unacc=result.get("non_viable_count", 0),
-        unw=result.get("unwanted_count", 0),
-        micro=result.get("micro_fragment_count", 0),
-        min_cut=result["min_viable_cut_mm"],
+    return (
+        tr(
+            "shift_summary_line",
+            prefix=prefix,
+            status=get_shift_quality_status(result),
+            x=result["shift_x_mm"],
+            y=result["shift_y_mm"],
+            complex=result["complex_count"],
+            unacc=result.get("non_viable_count", 0),
+            unw=result.get("unwanted_count", 0),
+            micro=result.get("micro_fragment_count", 0),
+            min_cut=result["min_viable_cut_mm"],
+        )
+        or ""
     ) + (
-        tr("shift_abs_min_suffix", value=result.get("min_cut_all_mm", 0.0))
+        (tr("shift_abs_min_suffix", value=result.get("min_cut_all_mm", 0.0)) or "")
         if result.get("min_cut_all_mm", 0.0) < result["min_viable_cut_mm"]
         else ""
     )
