@@ -232,17 +232,6 @@ try:
         raise Exception(_CANCELLED)
     lower_axis, support_angle = _get_lower_axis_and_angle(lower_segs)
 
-    tile_ids = parse_ids_from_string(get_string_param(floor, "RF_Tiles_ID"))
-    if not tile_ids:
-        proceed = forms.alert(
-            tr("supports_tiles_missing"),
-            title=TITLE,
-            yes=True,
-            no=True,
-        )
-        if not proceed:
-            raise Exception(_CANCELLED)
-
     v_keys, h_keys = _read_grid_lines(floor)
 
     # --- Система высот ---
@@ -325,6 +314,10 @@ try:
         level = doc.GetElement(level_id)
     else:
         level = view.GenLevel
+
+    if not level:
+        forms.alert(tr("open_plan"), title=TITLE)
+        raise Exception(_CANCELLED)
 
     # Z стойки = верх перекрытия (стойка стоит на плите)
     bbox_data = get_bbox_xy(floor, view)

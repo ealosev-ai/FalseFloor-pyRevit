@@ -13,11 +13,11 @@ from floor_common import (
     read_floor_grid_params,
 )
 
-TOL = 1e-6
-SCALE = 1000.0
-ROUND_MM = 1
-AREA_EQUAL_TOL_MM2 = 0.1
-MIN_FRAGMENT_AREA_MM2 = 100.0
+TOL = 1e-6  # допуск сравнения floating-point (internal units ≈ 0.0003 мм)
+SCALE = 1000.0  # мм → Clipper2 int64 (1 мм = 1000 единиц, точность 0.001 мм)
+ROUND_MM = 1  # знаков после запятой при округлении мм
+AREA_EQUAL_TOL_MM2 = 0.1  # допуск сравнения площадей (мм²)
+MIN_FRAGMENT_AREA_MM2 = 100.0  # площадь микро-фрагмента (< 10×10 мм)
 
 # 4-уровневые пороги подрезок (по реальным спецификациям производителей)
 # < 50 мм       : micro_fragment — геометрический мусор, считается немонтируемым (non_viable)
@@ -30,48 +30,88 @@ DEFAULT_UNACCEPTABLE_CUT_MM = 100.0
 DEFAULT_UNWANTED_CUT_MM = 150.0
 DEFAULT_ACCEPTABLE_CUT_MM = 200.0
 
-DEFAULT_COARSE_SHIFT_STEP_MM = 50.0
-DEFAULT_REFINE_SHIFT_STEP_MM = 10.0
-DEFAULT_REFINE_RADIUS_MM = 60.0
-DEFAULT_REFINE_TOP_N = 5
-DEFAULT_TOP_N = 10
+DEFAULT_COARSE_SHIFT_STEP_MM = 50.0  # грубый шаг поиска (фаза 1)
+DEFAULT_REFINE_SHIFT_STEP_MM = 10.0  # точный шаг уточнения (фаза 2)
+DEFAULT_REFINE_RADIUS_MM = 60.0  # радиус уточнения вокруг лучших (фаза 2)
+DEFAULT_REFINE_TOP_N = 5  # сколько лучших из фазы 1 уточнять
+DEFAULT_TOP_N = 10  # сколько лучших вариантов возвращать
 
 # Целевая кратность подрезок по краям (мм).
 # При равных основных метриках предпочитается вариант,
 # размеры подрезок которого ближе к кратным CUT_ROUND_MM.
 CUT_ROUND_MM = 10.0
 
-# Параметры сканирования min-width для complex cuts
-_SCAN_SAMPLES = 40
-_SCAN_EPS = 0.05  # мм — сдвиг луча от вершин
-_SCAN_HIT_TOL = 1e-4  # мм — склейка совпавших пересечений
-_BBOX_TOL_MM = 1.0  # мм — допуск для bbox-пересечения (Clipper round-trip)
+# Сканирование min-width для сложных подрезок (ray-casting эвристика)
+_SCAN_SAMPLES = 40  # равномерных лучей по каждой оси
+_SCAN_EPS = 0.05  # мм — сдвиг луча от вершин (чтобы не попасть точно на ребро)
+_SCAN_HIT_TOL = 1e-4  # мм — склейка совпавших пересечений (дедупликация)
+_BBOX_TOL_MM = (
+    1.0  # мм — допуск для быстрой bbox-проверки (Clipper round-trip погрешность)
+)
 
 
 def _get_extension_root():
-    search_dir = os.path.dirname(__file__)
+    """Возвращает корневую папку расширения (.extension).
 
-    while True:
-        if search_dir.lower().endswith(".extension"):
+    Использует __file__ для определения пути и поднимается вверх
+    до нахождения папки с расширением.
+
+    Returns:
+        str: Абсолютный путь к корню расширения.
+
+    Raises:
+        Exception: Если корень расширения не найден.
+    """
+    # Нормализуем путь для Windows (UNC paths)
+    script_dir = os.path.normpath(os.path.dirname(os.path.abspath(__file__)))
+    search_dir = script_dir
+
+    max_iterations = 20
+    iterations = 0
+
+    while iterations < max_iterations:
+        iterations += 1
+        dir_lower = search_dir.lower()
+        if dir_lower.endswith(".extension"):
             return search_dir
 
         parent = os.path.dirname(search_dir)
+        # Достигли корня диска
         if parent == search_dir:
             break
         search_dir = parent
 
-    raise Exception("Extension root not found")
+    raise Exception("Extension root not found. Searched from: {}".format(script_dir))
 
 
 def _load_clipper_api():
+    """Загружает Clipper2Lib.dll через CLR.
+
+    DLL должна находиться в папке lib/ внутри расширения.
+
+    Returns:
+        tuple: Кортеж импортированных классов Clipper2.
+
+    Raises:
+        Exception: Если DLL не найдена или не загрузилась.
+    """
     ext_dir = _get_extension_root()
     dll_path = os.path.join(ext_dir, "lib", "Clipper2Lib.dll")
+
     if not os.path.exists(dll_path):
-        raise Exception("Clipper2Lib.dll not found: {}".format(dll_path))
+        raise Exception(
+            "Clipper2Lib.dll not found at: {}. "
+            "Ensure the DLL is in the lib/ folder of the extension.".format(dll_path)
+        )
 
-    clr.AddReferenceToFileAndPath(dll_path)
+    try:
+        clr.AddReferenceToFileAndPath(dll_path)
+    except Exception as ex:
+        raise Exception(
+            "Failed to load Clipper2Lib.dll from {}: {}".format(dll_path, str(ex))
+        )
 
-    from Clipper2Lib import (  # type: ignore  # type: ignore
+    from Clipper2Lib import (  # type: ignore
         Clipper64,
         ClipType,
         EndType,
@@ -815,8 +855,8 @@ def compute_voids(cell_bbox_mm, clipped_paths, max_voids=3):
     items = []
     for void_path in diff:
         pts = path64_to_points_mm(void_path)
-        if not pts:
-            continue
+        if not pts:  # pragma: no cover
+            continue  # pragma: no cover
 
         # Прямоугольный void — берём как есть
         if len(pts) == 4 and is_single_axis_rect(void_path):
@@ -830,8 +870,8 @@ def compute_voids(cell_bbox_mm, clipped_paths, max_voids=3):
         for r_x0, r_y0, r_x1, r_y1 in sub_rects:
             w_mm = normalize_mm(r_x1 - r_x0)
             h_mm = normalize_mm(r_y1 - r_y0)
-            if w_mm <= 0 or h_mm <= 0:
-                continue
+            if w_mm <= 0 or h_mm <= 0:  # pragma: no cover
+                continue  # pragma: no cover
             margin_x_mm = normalize_mm(r_x0 - c_x0)
             margin_y_mm = normalize_mm(r_y0 - c_y0)
             area = w_mm * h_mm
@@ -1074,6 +1114,7 @@ def evaluate_shift_exact(
     # micro (<50) тоже считается non_viable + дополнительно штрафуется в rank_key.
     non_viable_count = 0
     non_viable_simple = 0
+    non_viable_cells = []  # (x0, y0, x1, y1) internal для подсветки
     unwanted_count = 0  # 100–150 мм
     acceptable_count = 0  # 150–200 мм
     good_count = 0  # >= 200 мм
@@ -1127,6 +1168,7 @@ def evaluate_shift_exact(
                 if cut_min < micro_fragment_cut_mm:
                     micro_fragment_count += 1
                     non_viable_count += 1
+                    non_viable_cells.append((x0, y0, x1, y1))
                     if is_simple:
                         non_viable_simple += 1
                     continue
@@ -1135,6 +1177,7 @@ def evaluate_shift_exact(
 
                 if cut_min < unacceptable_cut_mm:
                     non_viable_count += 1
+                    non_viable_cells.append((x0, y0, x1, y1))
                     if is_simple:
                         non_viable_simple += 1
                 elif cut_min < unwanted_cut_mm:
@@ -1196,15 +1239,15 @@ def evaluate_shift_exact(
 
     def _edge_penalty_x(edge_x_mm):
         cut = (base_x_mm_r - edge_x_mm) % step_x_mm_r
-        if cut < 0:
-            cut += step_x_mm_r
+        if cut < 0:  # pragma: no cover
+            cut += step_x_mm_r  # pragma: no cover
         r = cut % CUT_ROUND_MM
         return min(r, CUT_ROUND_MM - r)
 
     def _edge_penalty_y(edge_y_mm):
         cut = (base_y_mm_r - edge_y_mm) % step_y_mm_r
-        if cut < 0:
-            cut += step_y_mm_r
+        if cut < 0:  # pragma: no cover
+            cut += step_y_mm_r  # pragma: no cover
         r = cut % CUT_ROUND_MM
         return min(r, CUT_ROUND_MM - r)
 
@@ -1280,6 +1323,7 @@ def evaluate_shift_exact(
         "micro_fragment_count": micro_fragment_count,
         "empty_count": empty_count,
         "non_viable_count": non_viable_count,
+        "non_viable_cells": non_viable_cells,
         "unwanted_count": unwanted_count,
         "acceptable_count": acceptable_count,
         "good_count": good_count,
@@ -1347,8 +1391,8 @@ def _normalize_shift(shift_internal, step_internal):
     if step_internal <= 0:
         return 0.0
     value = shift_internal % step_internal
-    if value < 0:
-        value += step_internal
+    if value < 0:  # pragma: no cover
+        value += step_internal  # pragma: no cover
     return value
 
 
@@ -1377,7 +1421,7 @@ def _build_local_shift_positions(
         values.append(normalized)
 
     if not values:
-        values.append(center)
+        values.append(center)  # pragma: no cover
 
     return sorted(values)
 
@@ -1394,6 +1438,7 @@ def evaluate_floor_shift(
     refine_radius_mm=None,
     refine_top_n=None,
     min_edge_clearance_mm=0,
+    progress_callback=None,
 ):
     params = read_floor_grid_params(floor)
     exact_zone = get_exact_zone_for_floor(doc, floor)
@@ -1440,6 +1485,7 @@ def evaluate_floor_shift(
             refine_top_n if refine_top_n is not None else DEFAULT_REFINE_TOP_N
         ),
         min_edge_clearance_mm=min_edge_clearance_mm,
+        progress_callback=progress_callback,
     )
 
 
@@ -1466,20 +1512,20 @@ def _snap_shifts_for_axis(vertex_coords_internal, base_internal, step_internal):
 
     for coord in vertex_coords_internal:
         raw = (coord - base_internal) % step_internal
-        if raw < 0:
-            raw += step_internal
+        if raw < 0:  # pragma: no cover
+            raw += step_internal  # pragma: no cover
         _add(raw)
         # Чуть в стороны (±1мм) чтобы линия не совпадала с ребром точно
         for offset in (tiny, -tiny):
             shifted = (raw + offset) % step_internal
-            if shifted < 0:
-                shifted += step_internal
+            if shifted < 0:  # pragma: no cover
+                shifted += step_internal  # pragma: no cover
             _add(shifted)
         # Полшага от грани — грань колонны попадает между линиями сетки
         for offset in (half_step, -half_step):
             shifted = (raw + offset) % step_internal
-            if shifted < 0:
-                shifted += step_internal
+            if shifted < 0:  # pragma: no cover
+                shifted += step_internal  # pragma: no cover
             _add(shifted)
 
     return sorted(shifts)
@@ -1533,20 +1579,20 @@ def _snap_pairs_for_holes(
         for cx, cy in corners:
             sx = (cx - base_x_internal) % step_x_internal
             sy = (cy - base_y_internal) % step_y_internal
-            if sx < 0:
-                sx += step_x_internal
-            if sy < 0:
-                sy += step_y_internal
+            if sx < 0:  # pragma: no cover
+                sx += step_x_internal  # pragma: no cover
+            if sy < 0:  # pragma: no cover
+                sy += step_y_internal  # pragma: no cover
 
             # Точное совпадение + легкие смещения от вырожденных случаев
             for ox in (0.0, tiny, -tiny):
                 for oy in (0.0, tiny, -tiny):
                     px = (sx + ox) % step_x_internal
                     py = (sy + oy) % step_y_internal
-                    if px < 0:
-                        px += step_x_internal
-                    if py < 0:
-                        py += step_y_internal
+                    if px < 0:  # pragma: no cover
+                        px += step_x_internal  # pragma: no cover
+                    if py < 0:  # pragma: no cover
+                        py += step_y_internal  # pragma: no cover
                     key = (round(internal_to_mm(px)), round(internal_to_mm(py)))
                     if key not in seen:
                         seen.add(key)
@@ -1557,10 +1603,10 @@ def _snap_pairs_for_holes(
                 for oy in (half_y, -half_y):
                     px = (sx + ox) % step_x_internal
                     py = (sy + oy) % step_y_internal
-                    if px < 0:
-                        px += step_x_internal
-                    if py < 0:
-                        py += step_y_internal
+                    if px < 0:  # pragma: no cover
+                        px += step_x_internal  # pragma: no cover
+                    if py < 0:  # pragma: no cover
+                        py += step_y_internal  # pragma: no cover
                     key = (round(internal_to_mm(px)), round(internal_to_mm(py)))
                     if key not in seen:
                         seen.add(key)
@@ -1574,8 +1620,8 @@ def _extract_contour_vertex_coords(outer_paths, hole_paths=None):
     xs = set()
     ys = set()
     for paths in [outer_paths] + ([hole_paths] if hole_paths else []):
-        if paths is None:
-            continue
+        if paths is None:  # pragma: no cover
+            continue  # pragma: no cover
         for path in paths:
             for pt in path:
                 xs.add(mm_to_internal(clipper_to_mm(pt.X)))
@@ -1620,8 +1666,8 @@ def _cut_round_deltas(
 
     def _deltas_for_edge(edge_mm, step_mm, base_mm):
         cut = (base_mm - edge_mm) % step_mm
-        if cut < 0:
-            cut += step_mm
+        if cut < 0:  # pragma: no cover
+            cut += step_mm  # pragma: no cover
         r = cut % CUT_ROUND_MM
         ds = set()
         if min(r, CUT_ROUND_MM - r) > tol:
@@ -1668,7 +1714,7 @@ def _cut_round_deltas(
         for dy in sorted(dy_all):
             if abs(dx) < tol and abs(dy) < tol:
                 continue
-            new_sx = _normalize_shift(shift_x + mm_to_internal(dx), step_x)
+            new_sx = _normalize_shift(shift_x + mm_to_internal(dx), step_x)  # noqa
             new_sy = _normalize_shift(shift_y + mm_to_internal(dy), step_y)
             key = (round(internal_to_mm(new_sx)), round(internal_to_mm(new_sy)))
             if key not in seen:
@@ -1696,6 +1742,7 @@ def find_best_shift(
     refine_radius_mm=None,
     refine_top_n=None,
     min_edge_clearance_mm=0,
+    progress_callback=None,
 ):
     # Предвычисляем координаты рёбер вырезов/колонн для near-edge проверки
     # (внешний контур не учитываем — у стен дублирование нормально)
@@ -1772,6 +1819,9 @@ def find_best_shift(
     shift_x_values = sorted(shift_x_set.values())
     shift_y_values = sorted(shift_y_set.values())
 
+    if progress_callback:
+        progress_callback("phase1", 0, len(shift_x_values) * len(shift_y_values))
+
     coarse_results = _evaluate_shifts_grid(
         shift_x_values=shift_x_values, shift_y_values=shift_y_values, **eval_kwargs
     )
@@ -1783,8 +1833,11 @@ def find_best_shift(
 
     phase1_results = coarse_results + hole_pair_results
 
+    if progress_callback:
+        progress_callback("phase1_done", len(phase1_results), len(phase1_results))
+
     if not phase1_results:
-        raise Exception("Не удалось рассчитать варианты смещений")
+        raise Exception("Не удалось рассчитать варианты смещений")  # pragma: no cover
 
     all_results_map = {}
     for result in phase1_results:
@@ -1809,7 +1862,10 @@ def find_best_shift(
         refine_step_internal = mm_to_internal(refine_shift_step_mm)
         refine_radius_internal = mm_to_internal(refine_radius_mm)
 
-        for seed in seeds:
+        if progress_callback:
+            progress_callback("phase2", 0, len(seeds))
+
+        for seed_idx, seed in enumerate(seeds):
             local_x = _build_local_shift_positions(
                 step_x,
                 seed["shift_x_internal"],
@@ -1826,6 +1882,8 @@ def find_best_shift(
                 shift_x_values=local_x, shift_y_values=local_y, **eval_kwargs
             )
             refine_count += len(batch)
+            if progress_callback:
+                progress_callback("phase2", seed_idx + 1, len(seeds))
             for result in batch:
                 key = _dedup_key(result)
                 if (
@@ -1835,6 +1893,9 @@ def find_best_shift(
                     all_results_map[key] = result
 
     # ---- Фаза 3: округление подрезок до кратных CUT_ROUND_MM ----
+    if progress_callback:
+        progress_callback("phase3", 0, 0)
+
     all_results = list(all_results_map.values())
     results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
     _cr_seeds = results_sorted[: min(3, len(results_sorted))]

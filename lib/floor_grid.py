@@ -35,6 +35,9 @@ CONTOUR_COLOR = Color(0, 255, 0)
 NEAR_COLUMN_STYLE_NAME = "RF_GridColumn"
 NEAR_COLUMN_COLOR = Color(255, 80, 80)  # красный — внимание
 
+NON_VIABLE_STYLE_NAME = "RF_NonViable"
+NON_VIABLE_COLOR = Color(255, 50, 0)  # ярко-красный — немонтируемые ячейки
+
 # Минимальный порог, если стрингер не найден (мм)
 _DEFAULT_COL_CLEARANCE_MM = 30.0
 
@@ -248,7 +251,9 @@ def _recreate_contour_on_top(floor, view, update_style=False):
     return len(new_ids)
 
 
-def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
+def redraw_grid_for_floor(
+    floor, view, transaction_name, update_style=False, non_viable_cells=None
+):
     step_x = get_double_param(floor, "RF_Step_X")
     step_y = get_double_param(floor, "RF_Step_Y")
     base_x_raw = get_double_param(floor, "RF_Base_X")
@@ -316,11 +321,18 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
     marker_styled_ids = (
         _collect_styled_curve_ids(view, marker_style_id) if marker_style_id else []
     )
+    nv_style_id = get_line_style_id(doc, NON_VIABLE_STYLE_NAME)
+    nv_styled_ids = _collect_styled_curve_ids(view, nv_style_id) if nv_style_id else []
 
     ids_to_delete = []
     seen_ids = set()
     for int_id in (
-        old_ids + styled_ids + near_col_styled_ids + old_marker_ids + marker_styled_ids
+        old_ids
+        + styled_ids
+        + near_col_styled_ids
+        + old_marker_ids
+        + marker_styled_ids
+        + nv_styled_ids
     ):
         if int_id in seen_ids:
             continue
@@ -384,8 +396,12 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
                     return True
             return False
 
+        near_col_count = 0
+
         for x in x_positions:
             is_near = near_col_style and _is_near_column_x(x)
+            if is_near:
+                near_col_count += 1
             if clip_paths:
                 segs = _clip_line_segments(x, min_y, x, max_y, clip_paths)
             else:
@@ -398,6 +414,8 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
 
         for y in y_positions:
             is_near = near_col_style and _is_near_column_y(y)
+            if is_near:
+                near_col_count += 1
             if clip_paths:
                 segs = _clip_line_segments(min_x, y, max_x, y, clip_paths)
             else:
@@ -455,6 +473,30 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
                 dc_r.LineStyle = marker_style
                 marker_ids.append(str(dc_r.Id.Value))
 
+        # X-кресты на немонтируемых ячейках
+        nv_count = 0
+        if non_viable_cells:
+            nv_style = get_or_create_line_style(
+                doc,
+                NON_VIABLE_STYLE_NAME,
+                NON_VIABLE_COLOR,
+                weight=3,
+                update_existing=update_style,
+            )
+            for cx0, cy0, cx1, cy1 in non_viable_cells:
+                try:
+                    d1 = Line.CreateBound(XYZ(cx0, cy0, z0), XYZ(cx1, cy1, z0))
+                    dc1 = doc.Create.NewDetailCurve(view, d1)
+                    dc1.LineStyle = nv_style
+                    created_ids.append(str(dc1.Id.Value))
+                    d2 = Line.CreateBound(XYZ(cx0, cy1, z0), XYZ(cx1, cy0, z0))
+                    dc2 = doc.Create.NewDetailCurve(view, d2)
+                    dc2.LineStyle = nv_style
+                    created_ids.append(str(dc2.Id.Value))
+                    nv_count += 1
+                except Exception:
+                    pass
+
         ids_string = ";".join(created_ids)
         ok = set_string_param(floor, "RF_Grid_Lines_ID", ids_string)
         if not ok:
@@ -476,6 +518,8 @@ def redraw_grid_for_floor(floor, view, transaction_name, update_style=False):
     return {
         "deleted_count": deleted_count,
         "created_count": len(created_ids),
+        "near_col_count": near_col_count,
+        "non_viable_drawn": nv_count,
         "marker_count": len(marker_ids),
         "contour_recreated": contour_recreated,
         "step_x": step_x,

@@ -615,6 +615,98 @@ def split_orthogonal_segments(segs, max_len, tol=1e-6, positions=None):
     return result
 
 
+def compute_stagger_positions(main_keys, lower_positions):
+    """Вычисляет наборы позиций для шахматного порядка стыков стрингеров.
+
+    Returns:
+        dict с ключами:
+        - lp_even, lp_odd: чётные/нечётные позиции нижних (для нарезки верхних)
+        - mk_mids_even, mk_mids_odd: чётные/нечётные серединные пролёты (для нарезки нижних)
+        - stagger_odd_upper: set — позиции верхних, режущихся по lp_odd
+        - stagger_odd_lower: set — позиции нижних, режущихся по mk_mids_odd
+    """
+
+    def _rc(v):
+        return round(v, 6)
+
+    sorted_lp = sorted(lower_positions)
+    sorted_mk = sorted(main_keys)
+
+    if len(sorted_lp) >= 2:
+        lp_even = sorted_lp[::2]
+        lp_odd = sorted_lp[1::2]
+    else:
+        lp_even = list(sorted_lp)
+        lp_odd = list(sorted_lp)
+
+    mk_mids = [
+        (sorted_mk[i] + sorted_mk[i + 1]) / 2.0 for i in range(len(sorted_mk) - 1)
+    ]
+    if len(mk_mids) >= 2:
+        mk_mids_even = mk_mids[::2]
+        mk_mids_odd = mk_mids[1::2]
+    else:
+        mk_mids_even = list(mk_mids)
+        mk_mids_odd = list(mk_mids)
+
+    stagger_odd_upper = set(_rc(p) for p in sorted_mk[1::2])
+    stagger_odd_lower = set(_rc(p) for p in sorted_lp[1::2])
+
+    return {
+        "lp_even": lp_even,
+        "lp_odd": lp_odd,
+        "mk_mids_even": mk_mids_even,
+        "mk_mids_odd": mk_mids_odd,
+        "stagger_odd_upper": stagger_odd_upper,
+        "stagger_odd_lower": stagger_odd_lower,
+    }
+
+
+def drop_near_parallel(contour_segs, grid_segs, tol, seg_tol=1e-6):
+    """Отсеивает контурные сегменты, параллельные и ближе tol к осевым.
+
+    Сравнение по поперечной координате: X для вертикальных, Y для горизонтальных.
+    Если осевой и контурный перекрываются по длине — контурный удаляется.
+
+    Returns:
+        (kept_segs, dropped_count)
+    """
+    if not contour_segs or not grid_segs:
+        return list(contour_segs), 0
+
+    def _key(seg):
+        x1, y1, x2, y2 = seg
+        if abs(y1 - y2) < seg_tol:
+            return True, (y1 + y2) / 2.0, min(x1, x2), max(x1, x2)
+        if abs(x1 - x2) < seg_tol:
+            return False, (x1 + x2) / 2.0, min(y1, y2), max(y1, y2)
+        return None, 0, 0, 0
+
+    grid_h, grid_v = [], []
+    for seg in grid_segs:
+        is_h, pos, smin, smax = _key(seg)
+        if is_h is True:
+            grid_h.append((pos, smin, smax))
+        elif is_h is False:
+            grid_v.append((pos, smin, smax))
+
+    kept, dropped = [], 0
+    for seg in contour_segs:
+        is_h, pos, smin, smax = _key(seg)
+        pool = grid_h if is_h is True else grid_v if is_h is False else []
+        dominated = False
+        for g_pos, g_smin, g_smax in pool:
+            if abs(pos - g_pos) < tol:
+                if g_smin < smax + seg_tol and g_smax > smin - seg_tol:
+                    dominated = True
+                    break
+        if dominated:
+            dropped += 1
+        else:
+            kept.append(seg)
+    return kept, dropped
+
+
 def build_support_nodes(lower_segs, max_spacing, support_half=0.0, tol=1e-6):
     """Узлы стоек вдоль нижних лонжеронов с дедупликацией."""
 

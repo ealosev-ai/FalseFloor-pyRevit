@@ -2,8 +2,6 @@
 
 from Autodesk.Revit.DB import (  # type: ignore
     Color,
-    CurveElement,
-    FilteredElementCollector,
     Options,
     PlanarFace,
     Solid,
@@ -14,7 +12,6 @@ from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
     delete_elements_by_ids,
-    get_line_style_id,
     get_or_create_line_style,
     get_source_floor,
     get_string_param,
@@ -70,24 +67,6 @@ def get_top_face_and_loops(floor):
         return best_face, None
 
 
-def _collect_styled_contour_ids(style_id):
-    """Собирает Id всех CurveElement со стилем RF_Contour."""
-    ids = []
-    if not style_id:
-        return ids
-
-    collector = FilteredElementCollector(doc).OfClass(CurveElement)
-    for curve_el in collector:
-        try:
-            ls = curve_el.LineStyle
-            if ls and ls.Id == style_id:
-                ids.append(curve_el.Id.IntegerValue)
-        except Exception:
-            pass
-
-    return ids
-
-
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(
@@ -122,12 +101,9 @@ try:
         )
         raise Exception("Top face or loops not found")
 
-    # ID для удаления: сохранённые + fallback по стилю
+    # ID для удаления: только линии текущего перекрытия
     old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
-    style_id = get_line_style_id(doc, CONTOUR_STYLE_NAME)
-    styled_ids = _collect_styled_contour_ids(style_id) if style_id else []
-
-    ids_to_delete = list(set(old_ids + styled_ids))
+    ids_to_delete = old_ids
 
     created_ids = []
     deleted_count = 0

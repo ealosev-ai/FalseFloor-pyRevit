@@ -3,8 +3,6 @@
 from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
     Color,
-    CurveElement,
-    FilteredElementCollector,
     Options,
     PlanarFace,
     Solid,
@@ -16,7 +14,6 @@ from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
     delete_elements_by_ids,
     get_id_value,
-    get_line_style_id,
     get_or_create_line_style,
     get_source_floor,
     get_string_param,
@@ -94,32 +91,13 @@ def get_top_face_and_loops(floor):
         return best_face, None
 
 
-def collect_styled_contour_ids(style_id):
-    ids = []
-    if not style_id:
-        return ids
-
-    collector = FilteredElementCollector(doc).OfClass(CurveElement)
-    for curve_el in collector:
-        try:
-            line_style = curve_el.LineStyle
-            if line_style and line_style.Id == style_id:
-                ids.append(get_id_value(curve_el.Id))
-        except Exception:
-            pass
-
-    return ids
-
-
 def rebuild_contour_for_floor(floor):
     face, edge_loops = get_top_face_and_loops(floor)
     if not face or not edge_loops:
         raise Exception(tr("contour_face_not_found"))
 
     old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
-    style_id = get_line_style_id(doc, CONTOUR_STYLE_NAME)
-    styled_ids = collect_styled_contour_ids(style_id) if style_id else []
-    ids_to_delete = list(set(old_ids + styled_ids))
+    ids_to_delete = old_ids
 
     created_ids = []
     with revit.Transaction(tr("tx_draw_contour")):
@@ -191,6 +169,10 @@ try:
     if height_mm is None:
         raise OperationCanceledException()
 
+    tile_thickness_mm = ask_mm_value(TITLE_PREPARE_ALL, tr("prompt_tile_thickness"), 40)
+    if tile_thickness_mm is None:
+        raise OperationCanceledException()
+
     missing_params = []
     with revit.Transaction(tr("tx_prepare_floor")):
         pairs = [
@@ -202,6 +184,7 @@ try:
             ("RF_Base_Y", base_point.Y),
             ("RF_Base_Z", base_point.Z),
             ("RF_Floor_Height", mm_to_internal(height_mm)),
+            ("RF_Tile_Thickness", mm_to_internal(tile_thickness_mm)),
         ]
         for name, val in pairs:
             if not set_double_param(floor, name, val):
@@ -229,6 +212,7 @@ try:
             step_x=step_x_mm,
             step_y=step_y_mm,
             height=height_mm,
+            tile_thickness=tile_thickness_mm,
             loops=contour_result["loop_count"],
             del_contour=contour_result["deleted_count"],
             new_contour=contour_result["created_count"],

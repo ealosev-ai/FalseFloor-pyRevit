@@ -21,3 +21,43 @@ falsepol_help/
 
 # Revit backup family copies
 *.000*.rfa
+*.001*.rfa
+*.002*.rfa
+*.003*.rfa
+*.004*.rfa
+*.005*.rfa
+*.006*.rfa
+*.007*.rfa
+*.008*.rfa
+*.009*.rfa
+*.rfa
+
+# Binary libraries (ship separately or include in release archives)
+*.dll
+*.exe
+
+# Release archives
+release/*.zip
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary scripts
+_capture_ref.py
+
+# Test button (not needed in production Revit UI)
+99_Tests.pulldown/
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# Test artifacts
+.coverage
+coverage.xml
+htmlcov/

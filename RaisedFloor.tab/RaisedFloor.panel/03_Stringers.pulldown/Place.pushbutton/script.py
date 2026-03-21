@@ -27,8 +27,10 @@ from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
+    compute_stagger_positions,
     cut_at_positions_1d,
     cut_equal_1d,
+    drop_near_parallel,
     get_double_param,
     get_mm_param,
     get_source_floor,
@@ -489,17 +491,6 @@ def main():
         forms.alert(tr("missing_params", params="\n".join(missing)), title=TITLE)
         raise _Cancel()
 
-    tile_ids = parse_ids_from_string(get_string_param(floor, "RF_Tiles_ID"))
-    if not tile_ids:
-        proceed = forms.alert(
-            tr("long_tiles_missing"),
-            title=TITLE,
-            yes=True,
-            no=True,
-        )
-        if not proceed:
-            raise _Cancel()
-
     dir_x, sym_upper, sym_lower, max_len, lower_step = _ask_config(floor)
 
     # ── Сетка ──
@@ -620,7 +611,8 @@ def main():
         clip_outer, clip_holes = offset_zone_contours(zone, MOUNTING_GAP_MM)
         ch1, cv1, sk1 = _edges_from_paths64(clip_outer)
         ch2, cv2, sk2 = _edges_from_paths64(clip_holes)
-        clip_h, clip_v = ch1 + ch2, cv1 + cv2
+        clip_h = ch1 + ch2
+        clip_v = cv1 + cv2
         contour_skipped += sk1 + sk2
     except Exception as ex:
         contour_error = "clip offset: " + str(ex)
@@ -635,6 +627,11 @@ def main():
 
     frame_h_upper, frame_v_upper = [], []
     frame_h_lower, frame_v_lower = [], []
+    # Раздельно outer/holes — для отсева дублей только вокруг дыр
+    frame_h_upper_wall, frame_v_upper_wall = [], []
+    frame_h_upper_hole, frame_v_upper_hole = [], []
+    frame_h_lower_wall, frame_v_lower_wall = [], []
+    frame_h_lower_hole, frame_v_lower_hole = [], []
     if pw > TOL:
         # Полигон для верхних контурных
         try:
@@ -643,6 +640,8 @@ def main():
             fhu2, fvu2, sku2 = _edges_from_paths64(fu_holes)
             frame_h_upper = fhu1 + fhu2
             frame_v_upper = fvu1 + fvu2
+            frame_h_upper_wall, frame_v_upper_wall = fhu1, fvu1
+            frame_h_upper_hole, frame_v_upper_hole = fhu2, fvu2
             contour_skipped += sku1 + sku2
         except Exception as ex:
             if not contour_error:
@@ -654,6 +653,8 @@ def main():
             fhl2, fvl2, skl2 = _edges_from_paths64(fl_holes)
             frame_h_lower = fhl1 + fhl2
             frame_v_lower = fvl1 + fvl2
+            frame_h_lower_wall, frame_v_lower_wall = fhl1, fvl1
+            frame_h_lower_hole, frame_v_lower_hole = fhl2, fvl2
             contour_skipped += skl1 + skl2
         except Exception as ex:
             if not contour_error:
@@ -682,45 +683,98 @@ def main():
             lower_segs.append((span_min, pos, span_max, pos))
 
     # ── 3. Контурная обвязка ──
-    #   Верхние контурные берём из frame_upper-полигона,
-    #   нижние — из frame_lower (учитывает пол-оголовка стойки).
-    contour_upper, contour_lower = [], []
+    #   Стеновые (wall) — неприкосновенны.
+    #   Вокруг дыр (hole) — могут быть отсеяны рядом с осевыми.
+    contour_upper_wall, contour_upper_hole = [], []
+    contour_lower_wall, contour_lower_hole = [], []
     if dir_x:
-        for x_s, x_e, y in frame_h_upper:
-            contour_upper.append((x_s, y, x_e, y))
-        for y_s, y_e, x in frame_v_lower:
-            contour_lower.append((x, y_s, x, y_e))
+        for x_s, x_e, y in frame_h_upper_wall:
+            contour_upper_wall.append((x_s, y, x_e, y))
+        for x_s, x_e, y in frame_h_upper_hole:
+            contour_upper_hole.append((x_s, y, x_e, y))
+        for y_s, y_e, x in frame_v_lower_wall:
+            contour_lower_wall.append((x, y_s, x, y_e))
+        for y_s, y_e, x in frame_v_lower_hole:
+            contour_lower_hole.append((x, y_s, x, y_e))
     else:
-        for x_s, x_e, y in frame_h_lower:
-            contour_lower.append((x_s, y, x_e, y))
-        for y_s, y_e, x in frame_v_upper:
-            contour_upper.append((x, y_s, x, y_e))
+        for x_s, x_e, y in frame_h_lower_wall:
+            contour_lower_wall.append((x_s, y, x_e, y))
+        for x_s, x_e, y in frame_h_lower_hole:
+            contour_lower_hole.append((x_s, y, x_e, y))
+        for y_s, y_e, x in frame_v_upper_wall:
+            contour_upper_wall.append((x, y_s, x, y_e))
+        for y_s, y_e, x in frame_v_upper_hole:
+            contour_upper_hole.append((x, y_s, x, y_e))
 
     # ── 3a. Нахлёст контурных в углах (опирание + монтажный запас) ──
-    contour_lower = _extend_ends(contour_lower, pw_upper)
-    contour_upper = _extend_ends(contour_upper, pw_lower)
+    contour_lower_wall = _extend_ends(contour_lower_wall, pw_upper)
+    contour_lower_hole = _extend_ends(contour_lower_hole, pw_upper)
+    contour_upper_wall = _extend_ends(contour_upper_wall, pw_lower)
+    contour_upper_hole = _extend_ends(contour_upper_hole, pw_lower)
 
     # ── 4. Клиппинг к границе −5 мм ──
     upper_segs = _clip_to_boundary(upper_segs, clip_h, clip_v)
     lower_segs = _clip_to_boundary(lower_segs, clip_h, clip_v)
-    contour_upper = _clip_to_boundary(contour_upper, clip_h, clip_v)
-    contour_lower = _clip_to_boundary(contour_lower, clip_h, clip_v)
+    contour_upper_wall = _clip_to_boundary(contour_upper_wall, clip_h, clip_v)
+    contour_upper_hole = _clip_to_boundary(contour_upper_hole, clip_h, clip_v)
+    contour_lower_wall = _clip_to_boundary(contour_lower_wall, clip_h, clip_v)
+    contour_lower_hole = _clip_to_boundary(contour_lower_hole, clip_h, clip_v)
 
     # ── 5. Нарезка по макс. длине ──
-    #   Верхние → стыки на нижних позициях (для опоры)
-    #   Нижние / контур → равномерно
-    upper_segs = [
-        p for seg in upper_segs for p in _cut_seg(seg, max_len, lower_positions)
+    #   Верхние: шахматный порядок стыков на нижних позициях (lower_positions).
+    #     Чётные ряды режутся на чётных нижних, нечётные — на нечётных.
+    #   Нижние: стыки в СЕРЕДИНАХ пролётов между верхними (main_keys).
+    #     Конструктивно: нижний непрерывен под каждым верхним (место макс. нагрузки),
+    #     стык — в центре пролёта (минимум нагрузки).  Шахматный порядок сохраняется.
+    stg = compute_stagger_positions(main_keys, lower_positions)
+    lp_even = stg["lp_even"]
+    lp_odd = stg["lp_odd"]
+    mk_mids_even = stg["mk_mids_even"]
+    mk_mids_odd = stg["mk_mids_odd"]
+    _stagger_odd_upper = stg["stagger_odd_upper"]
+    _stagger_odd_lower = stg["stagger_odd_lower"]
+
+    upper_segs_cut = []
+    for seg in upper_segs:
+        pos = _rc(seg[1] if dir_x else seg[0])
+        lp = lp_odd if pos in _stagger_odd_upper else lp_even
+        upper_segs_cut.extend(_cut_seg(seg, max_len, lp))
+    upper_segs = upper_segs_cut
+
+    lower_segs_cut = []
+    for seg in lower_segs:
+        pos = _rc(seg[0] if dir_x else seg[1])
+        mids = mk_mids_odd if pos in _stagger_odd_lower else mk_mids_even
+        lower_segs_cut.extend(_cut_seg(seg, max_len, mids))
+    lower_segs = lower_segs_cut
+
+    contour_upper_wall = [
+        p for seg in contour_upper_wall for p in _cut_seg(seg, max_len, lower_positions)
     ]
-    lower_segs = [p for seg in lower_segs for p in _cut_seg(seg, max_len)]
-    contour_upper = [
-        p for seg in contour_upper for p in _cut_seg(seg, max_len, lower_positions)
+    contour_upper_hole = [
+        p for seg in contour_upper_hole for p in _cut_seg(seg, max_len, lower_positions)
     ]
-    contour_lower = [p for seg in contour_lower for p in _cut_seg(seg, max_len)]
+    contour_lower_wall = [
+        p for seg in contour_lower_wall for p in _cut_seg(seg, max_len, mk_mids)
+    ]
+    contour_lower_hole = [
+        p for seg in contour_lower_hole for p in _cut_seg(seg, max_len, mk_mids)
+    ]
+
+    # ── 5a. Отсев hole-контурных, дублирующих осевые (только нижние) ──
+    #   Нижние: если осевой проходит параллельно контурному вокруг дыры ближе
+    #   чем pw + 5 мм — контурный бессмыслен (невозможно поставить 2 опоры рядом).
+    #   Верхние hole-контурные НЕ трогаем: плитка опирается на верхние,
+    #   и ей всегда нужны минимум 2 параллельные опоры.
+    near_tol = max(pw_lower, pw_upper) + mm_to_internal(MOUNTING_GAP_MM)
+    contour_lower_hole, near_l = drop_near_parallel(
+        contour_lower_hole, lower_segs, near_tol
+    )
+    near_u = 0
 
     # ── 6. Объединение + дедупликация ──
-    upper_segs = _dedup(upper_segs + contour_upper)
-    lower_segs = _dedup(lower_segs + contour_lower)
+    upper_segs = _dedup(upper_segs + contour_upper_wall + contour_upper_hole)
+    lower_segs = _dedup(lower_segs + contour_lower_wall + contour_lower_hole)
 
     # ── 7. Фильтр коротких ──
     min_seg = max(pw * 0.5, mm_to_internal(30))
@@ -754,6 +808,12 @@ def main():
         msg.append("!!! Наклонных рёбер: {}".format(contour_skipped))
     if short_u or short_l:
         msg.append(tr("long_short_count", upper=short_u, lower=short_l))
+    if near_u or near_l:
+        msg.append(
+            "Контурных убрано (дубль осевых): верхн. {}, нижн. {}".format(
+                near_u, near_l
+            )
+        )
     msg.extend(["", tr("deleted_old", count=len(old_ids)), "", tr("continue")])
 
     if not forms.alert("\n".join(msg), title=TITLE, yes=True, no=True):

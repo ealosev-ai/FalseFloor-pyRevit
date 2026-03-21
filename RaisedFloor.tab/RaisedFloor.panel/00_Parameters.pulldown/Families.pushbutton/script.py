@@ -20,6 +20,10 @@ from Autodesk.Revit.DB import (  # type: ignore
     Transaction,
 )
 from floor_i18n import tr  # type: ignore
+from floor_utils import (  # type: ignore
+    get_storage_type_id,
+    safe_get_name,
+)
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
@@ -33,6 +37,18 @@ FAMILY_PARAMS = [
     ("RF_Row", StorageType.Integer, "Ряд в сетке", True),
     ("RF_Mark", StorageType.String, "Марка элемента ФП", True),
     ("RF_Tile_Type", StorageType.String, "Тип плитки (Полная/Подрезка/Сложная)", True),
+    (
+        "RF_Tile_Size_X",
+        StorageType.Double,
+        "Базовый размер плитки X = шаг сетки (ft)",
+        True,
+    ),
+    (
+        "RF_Tile_Size_Y",
+        StorageType.Double,
+        "Базовый размер плитки Y = шаг сетки (ft)",
+        True,
+    ),
     ("RF_Cut_X", StorageType.Double, "Размер подрезки X (ft)", True),
     ("RF_Cut_Y", StorageType.Double, "Размер подрезки Y (ft)", True),
     ("RF_Void1_X", StorageType.Double, "Вырез ширина", True),
@@ -96,6 +112,8 @@ _TILE_PARAMS = {
     "RF_Row",
     "RF_Mark",
     "RF_Tile_Type",
+    "RF_Tile_Size_X",
+    "RF_Tile_Size_Y",
     "RF_Cut_X",
     "RF_Cut_Y",
     "RF_Void1_X",
@@ -147,57 +165,9 @@ def _get_params_for_family(family_name):
     return _ALL_PARAM_NAMES
 
 
-def _storage_to_param_type(st):
-    """StorageType → ForgeTypeId (Revit 2025+) или ParameterType (старые)."""
-    # Специальный случай: Yes/No
-    if st == "YesNo":
-        try:
-            from Autodesk.Revit.DB import SpecTypeId  # type: ignore
-
-            return SpecTypeId.Boolean.YesNo
-        except Exception:
-            pass
-        try:
-            from Autodesk.Revit.DB import ParameterType  # type: ignore
-
-            return ParameterType.YesNo
-        except Exception:
-            pass
-        return None
-    try:
-        from Autodesk.Revit.DB import SpecTypeId  # type: ignore
-
-        if st == StorageType.Double:
-            return SpecTypeId.Length
-        elif st == StorageType.Integer:
-            return SpecTypeId.Int.Integer
-        elif st == StorageType.String:
-            return SpecTypeId.String.Text
-    except Exception:
-        pass
-    try:
-        from Autodesk.Revit.DB import ParameterType  # type: ignore
-
-        if st == StorageType.Double:
-            return ParameterType.Length
-        elif st == StorageType.Integer:
-            return ParameterType.Integer
-        elif st == StorageType.String:
-            return ParameterType.Text
-    except Exception:
-        pass
-    return None
-
-
-def _safe_name(obj):
-    """Безопасно получает .Name из объекта Revit. Возвращает None при любой ошибке."""
-    if obj is None:
-        return None
-    try:
-        return obj.Name
-    except Exception:
-        return None
-
+# Алиасы на функции из utils для обратной совместимости
+_storage_to_param_type = get_storage_type_id
+_safe_name = safe_get_name
 
 SP_GROUP_NAME = "RaisedFloor"
 
@@ -263,15 +233,24 @@ def _load_fresh_definitions():
 
     Вызывается перед обработкой каждого семейства чтобы избежать
     ситуации со stale-ссылками после LoadFamily/Close.
+
+    Returns:
+        dict: {name: (Definition, is_instance)} для всех FAMILY_PARAMS.
+
+    Raises:
+        Exception: Если файл общих параметров не открыт или группа не найдена.
     """
+    # Закрываем и заново открываем файл для получения свежих данных
     sp_file = app.OpenSharedParameterFile()
     if not sp_file:
         raise Exception(tr("fam_sp_open_failed"))
+
     group = None
     for g in sp_file.Groups:
         if _safe_name(g) == SP_GROUP_NAME:
             group = g
             break
+
     if group is None:
         raise Exception(tr("fam_group_not_found", name=SP_GROUP_NAME))
 
@@ -284,6 +263,7 @@ def _load_fresh_definitions():
     for name, st, desc, is_instance in FAMILY_PARAMS:
         if name in existing_defs:
             result[name] = (existing_defs[name], is_instance)
+
     return result
 
 
@@ -434,14 +414,21 @@ def _process_family(family):
 
     Перечитывает определения из ФОП перед каждым семейством,
     чтобы ссылки были гарантированно свежими.
+
+    Args:
+        family: Revit Family object для обработки.
+
+    Returns:
+        tuple: (added_count, removed_count, error_list)
     """
     allowed = _get_params_for_family(family.Name)
 
-    fam_doc = doc.EditFamily(family)
-    if not fam_doc:
-        return 0, 0, [tr("fam_open_failed", name=family.Name)]
-
+    fam_doc = None
     try:
+        fam_doc = doc.EditFamily(family)
+        if not fam_doc:
+            return 0, 0, [tr("fam_open_failed", name=family.Name)]
+
         ext_defs = _load_fresh_definitions()
         added, errors = _add_params_to_family_doc(fam_doc, ext_defs, allowed)
 
@@ -450,18 +437,70 @@ def _process_family(family):
         if obsolete:
             errors.append(tr("fam_obsolete", names=", ".join(sorted(obsolete))))
 
+        # Перезагрузка семейства в проект с обработкой ошибок
         if added:
-            fam_doc.LoadFamily(doc)
+            try:
+                # Сохраняем семейство перед загрузкой
+                fam_doc.Save()
+                load_result = fam_doc.LoadFamily(doc)
+                if not load_result:
+                    errors.append("{}: LoadFamily returned False".format(family.Name))
+            except Exception as load_ex:
+                errors.append(
+                    "{}: LoadFamily failed - {}".format(family.Name, str(load_ex))
+                )
+                # Откат: удаляем только что добавленные параметры
+                if added:
+                    try:
+                        _rollback_added_params(fam_doc, added)
+                    except Exception as rollback_ex:
+                        errors.append(
+                            "{}: Rollback failed - {}".format(
+                                family.Name, str(rollback_ex)
+                            )
+                        )
 
         fam_doc.Close(False)
         return len(added), 0, errors
 
     except Exception as ex:
-        try:
-            fam_doc.Close(False)
-        except Exception:
-            pass
+        # Гарантируем закрытие документа семейства при любой ошибке
+        if fam_doc and fam_doc.IsModified:
+            try:
+                fam_doc.Close(False)
+            except Exception:
+                pass
         return 0, 0, [str(ex)]
+
+
+def _rollback_added_params(fam_doc, param_names):
+    """Откатывает добавленные параметры из семейства.
+
+    Args:
+        fam_doc: Revit Family document.
+        param_names: Список имён параметров для удаления.
+    """
+    fam_mgr = fam_doc.FamilyManager
+    params_to_remove = []
+
+    for p in fam_mgr.GetParameters():
+        if p and p.Definition and p.Definition.Name:
+            if p.Definition.Name in param_names:
+                params_to_remove.append(p)
+
+    if params_to_remove:
+        t = Transaction(fam_doc, "Rollback RF params")
+        t.Start()
+        try:
+            for p in params_to_remove:
+                try:
+                    fam_mgr.RemoveParameter(p)
+                except Exception:
+                    pass  # Игнорируем ошибки отката
+            t.Commit()
+        except Exception:
+            if t.HasStarted():
+                t.RollBack()
 
 
 def _run_in_family_editor():

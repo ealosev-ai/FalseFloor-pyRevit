@@ -18,6 +18,20 @@
 2. Подобрать смещение раскладки по точному контуру.
 3. Разместить элементы подсистемы и плитки.
 
+### Шпаргалка: как выбирается смещение (30 секунд)
+
+1. Строится точная зона: внешний контур минус отверстия.
+2. Генерируются кандидаты смещения X/Y: грубый шаг + snap к вершинам/углам.
+3. Для лучших вариантов делается локальное уточнение (мелкий шаг).
+4. Для каждого кандидата каждая ячейка клиппируется по контуру и классифицируется.
+5. Считаются метрики качества: немонтируемые, сложные, полные, близость к колоннам и т.д.
+6. Выбирается минимум по rank_key (иерархический приоритет), записывается RF_Offset_X/Y.
+
+Критично:
+
+- сначала минимизируются немонтируемые подрезки `<100 мм`, потом уже оптимизируются остальные показатели;
+- при равных условиях предпочтение у варианта с более «ровными» и технологичными подрезками.
+
 ### Перед первым запуском
 
 Проверьте:
@@ -48,15 +62,15 @@
 4. 1 Подготовка -> Периметр.
 5. 1 Подготовка -> Сетка.
 6. 2 Подобрать раскладку.
-7. 5 Плитки -> Разместить.
-8. 3 Лонжероны -> Разместить.
-9. 4 Стойки -> Разместить.
+7. 3 Лонжероны -> Разместить.
+8. 4 Стойки -> Разместить.
+9. 5 Плитки -> Разместить.
 
-Почему плитки раньше лонжеронов и стоек:
+Почему лонжероны и стойки можно ставить до плиток:
 
-- команда плиток записывает RF_Tile_Thickness в зону;
-- лонжероны и стойки используют её в расчёте высотной схемы;
-- при запуске в обратном порядке сработают предупреждения и fallback к толщине из семейства.
+- высотная схема берёт толщину плитки из RF_Tile_Thickness, который задаётся на этапе Подготовка;
+- если RF_Tile_Thickness не заполнен, используется fallback из семейства RF_Tile;
+- такой порядок удобен для наглядного контроля каркаса до укладки плиток.
 
 ### Что делает каждая команда
 
@@ -129,6 +143,56 @@
 - сложные подрезки;
 - близость линий к колоннам/вырезам;
 - площадь и типоразмеры подрезок.
+
+Как работает алгоритм подбора:
+
+1. Входные данные.
+
+- Берутся шаги `RF_Step_X/Y`, база `RF_Base_X/Y`, текущее перекрытие и его точный контур.
+- Контур строится как внешняя граница минус отверстия (колонны/вырезы).
+
+1. Фаза 1: грубый поиск кандидатов смещения.
+
+- Перебор смещений по X/Y на грубом шаге (по умолчанию 50 мм).
+- Дополняется «инженерными» snap-кандидатами: через вершины контура, углы отверстий, а также варианты ±1 мм и полшага.
+
+1. Фаза 2: локальное уточнение лучших.
+
+- Для top-N кандидатов из фазы 1 строится локальная сетка вокруг каждого (по умолчанию шаг 10 мм, радиус 60 мм).
+- Это даёт точность без полного перебора всех комбинаций.
+
+1. Фаза 3: доводка под кратность подрезок.
+
+- Для лучших вариантов пробуются аналитические дельты, чтобы подрезки у границ были ближе к кратности 10 мм (`CUT_ROUND_MM`).
+
+1. Оценка каждого кандидата.
+
+- Для каждой ячейки сетки строится пересечение с точным контуром (Clipper2).
+- Ячейка классифицируется как полная, простая подрезка, сложная, фрагмент или пустая.
+- Для сложных подрезок min-width оценивается сканированием лучами (ray-casting).
+
+Пороги подрезок (мм):
+
+- `< 50` — micro fragment;
+- `< 100` — немонтируемая;
+- `100–150` — нежелательная;
+- `150–200` — допустимая;
+- `>= 200` — хорошая.
+
+Приоритет ранжирования (rank_key, от более важного к менее важному):
+
+1. `unsplit_holes` — неразбитые отверстия;
+2. `non_viable_count` — немонтируемые подрезки `<100`;
+3. `micro_fragment_count` — микрофрагменты `<50`;
+4. `near_edge_count` и `near_edge_penalty` — близость к рёбрам отверстий;
+5. `unwanted_count`, `complex_count`;
+6. максимум полных плиток (`full_count`), затем качество оставшихся метрик (`unique_sizes`, `min_viable_cut`, roundness/spread penalties).
+
+7. Результат.
+
+- Выбирается вариант с минимальным `rank_key`.
+- Записываются `RF_Offset_X/Y`, сетка перерисовывается сразу.
+- В отчёте показываются счётчики подрезок и качество найденного смещения.
 
 #### 5 Плитки -> Разместить
 
@@ -247,6 +311,19 @@ Core idea:
 2. Find the best layout shift from the exact contour.
 3. Place subsystem elements and tiles.
 
+### Quick Cheat Sheet: how shift is chosen (30 seconds)
+
+1. Build exact zone: outer contour minus holes.
+2. Generate X/Y shift candidates: coarse step + snap-to-vertices/corners.
+3. Run local refinement around top coarse candidates.
+4. For each candidate, clip every grid cell by contour and classify it.
+5. Compute quality metrics: non-viable cuts, complexity, full tiles, near-hole proximity, etc.
+6. Pick minimum rank_key candidate and write RF_Offset_X/Y.
+
+Key point:
+
+- non-viable cuts `<100 mm` are minimized first; only then other quality metrics are optimized.
+
 ### Before First Run
 
 Check:
@@ -277,15 +354,15 @@ Main commands:
 4. 1 Prepare -> Contour.
 5. 1 Prepare -> Grid.
 6. 2 Find Layout Shift.
-7. 5 Tiles -> Place.
-8. 3 Stringers -> Place.
-9. 4 Supports -> Place.
+7. 3 Stringers -> Place.
+8. 4 Supports -> Place.
+9. 5 Tiles -> Place.
 
-Why tiles come before stringers/supports:
+Why stringers/supports can be placed before tiles:
 
-- tile placement writes RF_Tile_Thickness into the zone;
-- stringers/supports use it for height-stack calculations;
-- if run earlier, warnings are shown and fallback thickness is used.
+- height stack uses RF_Tile_Thickness written during Prepare;
+- if RF_Tile_Thickness is missing, fallback from RF_Tile family is used;
+- this order is often more convenient for visual frame control before tile placement.
 
 ### What Each Command Does
 
@@ -358,6 +435,56 @@ Metrics include:
 - complex cuts;
 - near-column/void proximity;
 - cut area and size diversity.
+
+How the shift optimizer works:
+
+1. Input data.
+
+- Uses `RF_Step_X/Y`, base `RF_Base_X/Y`, selected floor, and exact zone contour.
+- Zone contour is built as outer boundary minus holes (columns/openings).
+
+1. Phase 1: coarse search.
+
+- Enumerates X/Y shifts on a coarse step (default 50 mm).
+- Adds engineering snap candidates: contour vertices, hole corners, plus ±1 mm and half-step offsets.
+
+1. Phase 2: local refinement.
+
+- Refines top-N coarse candidates in local neighborhoods (default 10 mm step, 60 mm radius).
+- Gives near-exhaustive quality with much less compute.
+
+1. Phase 3: edge-cut rounding.
+
+- Tries analytical deltas so boundary cuts are closer to 10 mm multiples (`CUT_ROUND_MM`).
+
+1. Candidate evaluation.
+
+- Each grid cell is clipped against the exact contour (Clipper2).
+- Cell is classified as full, simple cut, complex cut, fragment, or empty.
+- For complex cuts, min-width is estimated via ray-casting scan.
+
+Cut thresholds (mm):
+
+- `< 50` — micro fragment;
+- `< 100` — non-viable;
+- `100–150` — unwanted;
+- `150–200` — acceptable;
+- `>= 200` — good.
+
+Ranking priority (`rank_key`, most important first):
+
+1. `unsplit_holes`;
+2. `non_viable_count` (`<100` cuts);
+3. `micro_fragment_count` (`<50` cuts);
+4. `near_edge_count` and `near_edge_penalty`;
+5. `unwanted_count`, `complex_count`;
+6. maximize `full_count`, then tie-break with `unique_sizes`, `min_viable_cut`, and roundness/spread penalties.
+
+7. Output.
+
+- Picks the minimum `rank_key` candidate.
+- Writes `RF_Offset_X/Y` and redraws the grid immediately.
+- Report shows cut counters and resulting quality.
 
 #### 5 Tiles -> Place
 

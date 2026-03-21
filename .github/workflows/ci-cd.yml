@@ -1,0 +1,163 @@
+# GitHub Actions CI/CD Workflow for RaisedFloor.extension
+# Tests the pyRevit extension on multiple Python versions
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "lib/**/*.py"
+      - "tests/**/*.py"
+      - "RaisedFloor.tab/**/*.py"
+      - "requirements.txt"
+      - "pytest.ini"
+      - ".github/workflows/**/*.yml"
+
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "lib/**/*.py"
+      - "tests/**/*.py"
+      - "RaisedFloor.tab/**/*.py"
+      - "requirements.txt"
+      - "pytest.ini"
+
+  # Allow manual workflow runs
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: List installed packages
+        run: pip list
+
+      - name: Run pytest
+        run: |
+          pytest tests/ -m "not revit" -v --tb=short --cov=lib --cov-report=term-missing
+        env:
+          PYTHONPATH: ${{ github.workspace }};${{ github.workspace }}/lib
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ matrix.python-version }}
+          fail_ci_if_error: false
+
+  lint:
+    name: Lint Code
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install linting tools
+        run: |
+          pip install ruff mypy
+
+      - name: Run Ruff linter
+        run: ruff check lib/ RaisedFloor.tab/ tests/
+        continue-on-error: true
+
+      - name: Run Ruff formatter check
+        run: ruff format --check lib/ RaisedFloor.tab/ tests/
+        continue-on-error: true
+
+      - name: Run MyPy type checker
+        run: mypy lib/ --ignore-missing-imports --no-error-summary
+        continue-on-error: true
+
+  build:
+    name: Build Release Package
+    runs-on: windows-latest
+    needs: [test, lint]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create release archive
+        run: |
+          $timestamp = Get-Date -Format "yyyy-MM-dd"
+          $archiveName = "RaisedFloor.extension-$timestamp.zip"
+          Compress-Archive -Path ./* -DestinationPath $archiveName -Force
+          echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+        shell: pwsh
+        working-directory: .
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: ${{ env.ARCHIVE_NAME }}
+          retention-days: 30
+
+  # Documentation check
+  docs:
+    name: Check Documentation
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check README exists
+        run: |
+          if (-not (Test-Path "README.md")) {
+            Write-Error "README.md not found"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Check CHANGELOG exists
+        run: |
+          if (-not (Test-Path "CHANGELOG.md")) {
+            Write-Error "CHANGELOG.md not found"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Validate markdown files
+        run: |
+          $files = Get-ChildItem -Recurse -Include *.md
+          foreach ($file in $files) {
+            $content = Get-Content $file.FullName -Raw
+            if ([string]::IsNullOrWhiteSpace($content)) {
+              Write-Warning "Empty markdown file: $($file.FullName)"
+            }
+          }
+        shell: pwsh

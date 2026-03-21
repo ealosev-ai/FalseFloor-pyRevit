@@ -10,14 +10,18 @@ import os
 
 from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
-    Category,
-    CategorySet,
     ExternalDefinitionCreationOptions,
     InstanceBinding,
     StorageType,
     TypeBinding,
 )
 from floor_i18n import tr  # type: ignore
+from floor_utils import (  # type: ignore
+    create_category_set,
+    get_data_group_type_id,
+    get_existing_parameter_bindings,
+    get_storage_type_id,
+)
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
@@ -133,98 +137,11 @@ PARAM_DEFS = [
     ),
 ]
 
-
-def _storage_to_param_type(st):
-    """Тип хранения → ForgeTypeId / ParameterType."""
-    # Специальный случай: Yes/No
-    if st == "YesNo":
-        try:
-            from Autodesk.Revit.DB import SpecTypeId  # type: ignore
-
-            return SpecTypeId.Boolean.YesNo
-        except Exception:
-            pass
-        try:
-            from Autodesk.Revit.DB import ParameterType  # type: ignore
-
-            return ParameterType.YesNo
-        except Exception:
-            pass
-        return None
-    try:
-        # Revit 2025+: SpecTypeId
-        from Autodesk.Revit.DB import SpecTypeId  # type: ignore
-
-        if st == StorageType.Double:
-            return SpecTypeId.Length
-        elif st == StorageType.Integer:
-            return SpecTypeId.Int.Integer
-        elif st == StorageType.String:
-            return SpecTypeId.String.Text
-    except Exception:
-        pass
-
-    # Revit < 2025: ParameterType enum
-    try:
-        from Autodesk.Revit.DB import ParameterType  # type: ignore
-
-        if st == StorageType.Double:
-            return ParameterType.Length
-        elif st == StorageType.Integer:
-            return ParameterType.Integer
-        elif st == StorageType.String:
-            return ParameterType.Text
-    except Exception:
-        pass
-
-    return None
-
-
-def _get_data_group_id():
-    """Возвращает идентификатор группы 'Данные' для Insert Project Parameter.
-
-    Revit API менялся: старые версии используют BuiltInParameterGroup,
-    новые - GroupTypeId (ForgeTypeId).
-    """
-    try:
-        from Autodesk.Revit.DB import GroupTypeId  # type: ignore
-
-        return GroupTypeId.Data
-    except Exception:
-        pass
-
-    try:
-        from Autodesk.Revit.DB import BuiltInParameterGroup  # type: ignore
-
-        return BuiltInParameterGroup.PG_DATA
-    except Exception:
-        pass
-
-    return None
-
-
-def _get_existing_bindings():
-    """Собирает словарь {имя: definition} для привязанных к проекту параметров."""
-    existing = {}
-    bm = doc.ParameterBindings
-    it = bm.ForwardIterator()
-    it.Reset()
-    while it.MoveNext():
-        defn = it.Key
-        if defn and defn.Name:
-            existing[defn.Name] = defn
-    return existing
-
-
-def _make_cat_set(built_in_cats):
-    """Создаёт CategorySet из списка BuiltInCategory."""
-    cs = CategorySet()
-    for bic in built_in_cats:
-        cat = Category.GetCategory(doc, bic)
-        if cat:
-            cs.Insert(cat)
-    return cs
-
+# Алиасы на функции из utils для обратной совместимости
+_storage_to_param_type = get_storage_type_id
+_get_data_group_id = get_data_group_type_id
+_get_existing_bindings = get_existing_parameter_bindings
+_make_cat_set = create_category_set
 
 # Набор имён Double-параметров для определения «неправильного типа»
 _DOUBLE_PARAM_NAMES = set(

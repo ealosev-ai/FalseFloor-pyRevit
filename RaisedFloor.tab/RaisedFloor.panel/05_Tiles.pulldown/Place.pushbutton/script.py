@@ -46,6 +46,8 @@ _REQUIRED_PARAMS = [
     "RF_Column",
     "RF_Row",
     "RF_Tile_Type",
+    "RF_Tile_Size_X",
+    "RF_Tile_Size_Y",
     "RF_Cut_X",
     "RF_Cut_Y",
     "RF_Mark",
@@ -234,6 +236,10 @@ try:
     else:
         level = view.GenLevel
 
+    if not level:
+        forms.alert(tr("open_plan"), title=TITLE)
+        raise Exception(_CANCELLED)
+
     # z0 — абсолютная отметка, а NewFamilyInstance(XYZ, sym, level, ...)
     # трактует Z как смещение от уровня → вычитаем отметку уровня
     level_elevation = level.Elevation if hasattr(level, "Elevation") else 0.0
@@ -401,6 +407,10 @@ try:
                 _set_instance_param(instance, "RF_Mark", "ПЛ.{}.{}".format(row, col))
                 _set_instance_param(instance, "RF_Ventilated", 0)
 
+                # Базовый размер плитки = шаг сетки
+                _set_instance_param(instance, "RF_Tile_Size_X", step_x)
+                _set_instance_param(instance, "RF_Tile_Size_Y", step_y)
+
                 if result["is_full"]:
                     _set_instance_param(instance, "RF_Tile_Type", "Full")
                     _set_instance_param(instance, "RF_Cut_X", 0.0)
@@ -414,12 +424,10 @@ try:
                     full_count += 1
                 elif result["is_simple_cut"] or result["is_complex_cut"]:
                     # Any cut — RF_Cut + voids work together
-                    step_x_mm = internal_to_mm(step_x)
-                    step_y_mm = internal_to_mm(step_y)
                     cut_x = result["size_x_mm"]
                     cut_y = result["size_y_mm"]
-                    px = 0.0 if abs(cut_x - step_x_mm) < 0.5 else mm_to_internal(cut_x)
-                    py = 0.0 if abs(cut_y - step_y_mm) < 0.5 else mm_to_internal(cut_y)
+                    px = mm_to_internal(cut_x)
+                    py = mm_to_internal(cut_y)
 
                     if result["is_simple_cut"]:
                         _set_instance_param(instance, "RF_Tile_Type", "SimpleCut")

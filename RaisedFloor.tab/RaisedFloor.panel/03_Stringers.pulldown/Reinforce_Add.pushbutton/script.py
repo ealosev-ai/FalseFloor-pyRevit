@@ -35,13 +35,14 @@ from floor_common import (  # type: ignore
 )
 from floor_exact import internal_to_mm, mm_to_internal  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
+from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = "Усиление: добавить"
+TITLE = tr("reinf_add_title")
 FAMILY_LONGERON = "RF_Stringer"
 FAMILY_SUPPORT = "RF_Support"
 PARAM_ZONES = "RF_Reinf_Zones_JSON"

@@ -1,0 +1,27 @@
+# RaisedFloor.extension Dependencies
+# ===================================
+# Install with: pip install -r requirements.txt
+
+# pyRevit framework (required for all extensions)
+# Note: pyrevit is typically installed separately via pyrevit installer
+# pyrevit>=6.1.0
+
+# Clipper2 library for polygon operations
+# Note: Clipper2Lib.dll is included in lib/ folder for Windows/Revit compatibility
+# The Python wrapper is loaded dynamically via clr.AddReference
+# clipper2-py>=1.0.0  # Uncomment if using pure Python package
+
+# Development dependencies for local QA/linting
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Type checking
+mypy>=1.5.0
+
+# Code quality
+ruff>=0.1.0
+
+# Documentation
+markdown>=3.5.0
