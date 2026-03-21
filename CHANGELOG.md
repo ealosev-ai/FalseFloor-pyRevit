@@ -1,5 +1,18 @@
-﻿# Changelog
+# Changelog
 
+## 2026-03-21 (v1.4.1)
+
+### Changed
+
+- Release packaging switched to runtime-only bundle (`lib/`, `RaisedFloor.tab/`, `Families/`, `README.md`, `LICENSE`, `CHANGELOG.md`) and excludes contributor-only content (`tests/`, `docs/`, `99_Tests.pulldown`).
+- CI test step now generates `coverage.xml` (`--cov-report=xml`) to match the Codecov upload step.
+
+### Docs
+
+- README installation section now recommends CLI install/update commands.
+- README explicitly states that end-user release ZIP does not include dev-only content.
+
+---
 ## 2026-03-21 (v1.4.0)
 
 ### Added — Стрингеры: конструктивные улучшения
@@ -109,3 +122,4 @@
 - Families must be re-saved in Revit Family Editor with the new RF_ parameter names.
 - Families are not backward-compatible across Revit versions. If the package families are saved in Revit 2026, Revit 2024 cannot open them.
 - Runtime dialogs/reports are fully bilingual.
+
