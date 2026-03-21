@@ -51,7 +51,7 @@ set RUN_REVIT_TESTS=1
 
 ## 📝 Структура тестов
 
-```
+```text
 tests/
 ├── conftest.py              # Фикстуры pytest
 ├── test_floor_i18n.py       # Тесты локализации

@@ -6,6 +6,7 @@ Run with: pytest tests/test_stringer_logic.py -v
 import importlib.util
 import os
 import sys
+from typing import Any
 
 import pytest
 
@@ -46,6 +47,8 @@ def _load_pure_functions():
     return ns["compute_stagger_positions"], ns["drop_near_parallel"]
 
 
+compute_stagger_positions: Any
+drop_near_parallel: Any
 compute_stagger_positions, drop_near_parallel = _load_pure_functions()
 
 
