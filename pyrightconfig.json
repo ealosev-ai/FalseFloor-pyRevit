@@ -1,5 +1,0 @@
-{
-    "extraPaths": ["RaisedFloor.extension/lib", "lib"],
-    "reportMissingModuleSource": false,
-    "reportMissingImports": "warning"
-}
