@@ -6,6 +6,7 @@ from Autodesk.Revit.DB import (  # type: ignore
     ElementId,
     Family,
     FilteredElementCollector,
+    Level,
     StorageType,
     ViewPlan,
 )
@@ -41,7 +42,6 @@ view = doc.ActiveView
 
 TITLE = tr("title_tiles")
 FAMILY_NAME = "RF_Tile"
-_CANCELLED = "@@CANCELLED@@"
 MIN_VIABLE_WIDTH_MM = 100.0
 _REQUIRED_PARAMS = [
     "RF_Column",
@@ -59,6 +59,10 @@ _VOID_PARAMS = (
     ("RF_Void3_X", "RF_Void3_Y", "RF_Void3_OX", "RF_Void3_OY"),
 )
 _VOID_MIN = mm_to_internal(1.0)  # void hidden by formula RF_Void*_X ≤ 1mm
+
+
+class _Cancel(Exception):
+    pass
 
 
 def _find_family_symbol(family_name):
@@ -162,10 +166,32 @@ def _find_vent_symbol(family):
     return None
 
 
+def _resolve_level_for_placement(floor, active_view, z_ref):
+    """Resolve placement level: floor -> active view -> nearest project level."""
+    level_id = getattr(floor, "LevelId", None)
+    if level_id and level_id != ElementId.InvalidElementId:
+        level = doc.GetElement(level_id)
+        if level:
+            return level
+
+    try:
+        level = active_view.GenLevel
+        if level:
+            return level
+    except Exception:
+        pass
+
+    levels = list(FilteredElementCollector(doc).OfClass(Level))
+    if levels:
+        return min(levels, key=lambda lvl: abs(getattr(lvl, "Elevation", 0.0) - z_ref))
+
+    return None
+
+
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     pick_filter = FloorOrPartSelectionFilter()
     try:
@@ -175,7 +201,7 @@ try:
             tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
@@ -189,7 +215,7 @@ try:
             tr("tiles_family_missing", family=FAMILY_NAME),
             title=TITLE,
         )
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     try:
         _sym_name = symbol.Name
@@ -232,16 +258,11 @@ try:
     else:
         z0 = z_top
 
-    # Level: перекрытие → вид (TODO: проверить на этажах без GenLevel)
-    level_id = floor.LevelId
-    if level_id and level_id != ElementId.InvalidElementId:
-        level = doc.GetElement(level_id)
-    else:
-        level = view.GenLevel
+    level = _resolve_level_for_placement(floor, view, z_top)
 
     if not level:
-        forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        forms.alert(tr("tiles_level_not_found"), title=TITLE)
+        raise _Cancel()
 
     # z0 — абсолютная отметка, а NewFamilyInstance(XYZ, sym, level, ...)
     # трактует Z как смещение от уровня → вычитаем отметку уровня
@@ -295,7 +316,7 @@ try:
 
     if cells_to_place == 0:
         forms.alert(tr("tiles_no_cells"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     _diag_text = tr(
         "tiles_diag",
@@ -326,7 +347,7 @@ try:
         no=True,
     )
     if not confirm:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     if vent_cells:
         keep_vent = forms.alert(
@@ -400,7 +421,7 @@ try:
                             tr("tiles_missing_params", params="\n".join(missing)),
                             title=TITLE,
                         )
-                        raise Exception(_CANCELLED)
+                        raise _Cancel()
 
                 # Колонка/ряд от базы
                 col = int(round((x0 - base_x) / step_x))
@@ -542,8 +563,7 @@ try:
 
     forms.alert("\n".join(done_lines), title=TITLE)
 
+except _Cancel:
+    pass
 except Exception as ex:
-    if str(ex) == _CANCELLED:
-        pass
-    else:
-        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

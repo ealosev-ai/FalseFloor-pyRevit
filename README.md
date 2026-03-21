@@ -26,27 +26,65 @@ EN:
 
 ## Быстрый старт / Quick Start
 
+### Установка через CLI / CLI Install (recommended)
+
 RU:
 
-1. Добавьте папку `RaisedFloor.extension` в pyRevit: Extensions → Add Folder.
-2. Выполните Reload pyRevit.
-3. Загрузите семейства из папки `Families`:
-   - `RF_Tile.rfa` — плитка
-   - `RF_Stringer.rfa` — стрингер
-   - `RF_Support.rfa` — стойка
-4. Откройте вкладку **Фальшпол**.
-5. Для подробной пользовательской инструкции — кнопка **7 Справка** или файл `RaisedFloor.tab/RaisedFloor.panel/README.md`.
+```bash
+# 1. Клонировать в папку расширений pyRevit
+git clone https://github.com/ealosev-ai/RaisedFloor-pyRevit.git "%APPDATA%\pyRevit-Master\Extensions\RaisedFloor.extension"
+
+# 2. Добавить папку расширений в pyRevit (если не уже добавлена)
+pyrevit extensions paths add "%APPDATA%\pyRevit-Master\Extensions"
+
+# 3. Перезагрузить pyRevit
+pyrevit run reload
+```
 
 EN:
 
-1. Add the `RaisedFloor.extension` folder to pyRevit: Extensions → Add Folder.
-2. Run Reload pyRevit.
-3. Load families from the `Families` folder:
-   - `RF_Tile.rfa` — tile
-   - `RF_Stringer.rfa` — stringer
-   - `RF_Support.rfa` — support post
-4. Open the **Фальшпол** tab.
-5. For the full user guide — use the **7 Справка** button or `RaisedFloor.tab/RaisedFloor.panel/README.md`.
+```bash
+# 1. Clone into pyRevit extensions folder
+git clone https://github.com/ealosev-ai/RaisedFloor-pyRevit.git "%APPDATA%\pyRevit-Master\Extensions\RaisedFloor.extension"
+
+# 2. Register the extensions folder in pyRevit (if not already)
+pyrevit extensions paths add "%APPDATA%\pyRevit-Master\Extensions"
+
+# 3. Reload pyRevit
+pyrevit run reload
+```
+
+> **Обновление / Update:** `git pull` в папке `RaisedFloor.extension` → Reload pyRevit.
+
+---
+
+### Ручная установка / Manual Install
+
+RU:
+
+1. Скачайте/клонируйте репозиторий.
+2. Добавьте папку `RaisedFloor.extension` в pyRevit: Extensions → Add Folder.
+3. Выполните Reload pyRevit.
+
+EN:
+
+1. Download/clone the repository.
+2. Add the `RaisedFloor.extension` folder to pyRevit: Extensions → Add Folder.
+3. Run Reload pyRevit.
+
+---
+
+### Семейства / Families
+
+RU: Загрузите из папки `Families`:
+- `RF_Tile.rfa` — плитка
+- `RF_Stringer.rfa` — стрингер
+- `RF_Support.rfa` — стойка
+
+EN: Load from the `Families` folder:
+- `RF_Tile.rfa` — tile
+- `RF_Stringer.rfa` — stringer
+- `RF_Support.rfa` — support post
 
 ---
 
@@ -163,6 +201,8 @@ py -3.11 -m venv .venv
 
 ```bash
 .venv\Scripts\python -m pytest tests/ -m "not revit" -v --cov=lib
+.venv\Scripts\python -m pytest tests/test_ribbon_smoke.py --no-cov -q
+.venv\Scripts\python run_smoke_tests.py
 ```
 
 ### Code quality
@@ -178,10 +218,9 @@ py -3.11 -m venv .venv
 RaisedFloor.extension/
 ├── lib/              # Core libraries (floor_common, floor_exact, floor_grid, floor_i18n, floor_ui, floor_utils)
 ├── RaisedFloor.tab/  # UI panel and scripts
-├── tests/            # Unit tests (155+ tests, pytest)
-├── docs/             # Developer guide
-├── Families/         # RFA families
-└── release/          # Release archives
+├── Families/         # RFA families (RF_Tile, RF_Stringer, RF_Support)
+├── tests/            # Unit + smoke tests (contributors only, ignored by pyRevit)
+└── docs/             # Developer guide
 ```
 
 ### Contributing

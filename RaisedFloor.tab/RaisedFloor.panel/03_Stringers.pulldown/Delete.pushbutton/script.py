@@ -2,6 +2,7 @@
 """Удаление всех стрингеров, размещённых скриптом."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
+from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
@@ -18,18 +19,24 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr("del_title_longerons")
-_CANCELLED = "@@CANCELLED@@"
+
+
+class _Cancel(Exception):
+    pass
 
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
-    ref = uidoc.Selection.PickObject(
-        ObjectType.Element,
-        FloorOrPartSelectionFilter(),
-        tr("pick_floor_prompt"),
-    )
+    try:
+        ref = uidoc.Selection.PickObject(
+            ObjectType.Element,
+            FloorOrPartSelectionFilter(),
+            tr("pick_floor_prompt"),
+        )
+    except OperationCanceledException:
+        raise _Cancel()
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
         raise Exception(tr("source_floor_not_found"))
@@ -40,7 +47,7 @@ try:
 
     if not all_ids:
         forms.alert(tr("del_not_found_longerons"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     confirm = forms.alert(
         tr(
@@ -54,7 +61,7 @@ try:
         no=True,
     )
     if not confirm:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     with revit.Transaction(tr("tx_delete_longerons")):
         deleted = 0
@@ -71,6 +78,7 @@ try:
 
     forms.alert(tr("del_done_longerons", count=deleted), title=TITLE)
 
+except _Cancel:
+    pass
 except Exception as ex:
-    if str(ex) != _CANCELLED:
-        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

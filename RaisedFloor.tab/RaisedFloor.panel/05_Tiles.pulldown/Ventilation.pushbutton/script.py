@@ -19,7 +19,10 @@ doc = revit.doc
 uidoc = revit.uidoc
 TITLE = tr("vent_title")
 FAMILY_NAME = "RF_Tile"
-_CANCELLED = "@@CANCELLED@@"
+
+
+class _Cancel(Exception):
+    pass
 
 
 class _TileSelectionFilter(ISelectionFilter):
@@ -103,7 +106,7 @@ try:
                 ObjectType.Element, _TileSelectionFilter(), tr("vent_select_tiles")
             )
         except OperationCanceledException:
-            raise Exception(_CANCELLED)
+            raise _Cancel()
 
         for r in refs:
             el = doc.GetElement(r.ElementId)
@@ -114,7 +117,7 @@ try:
 
     if not tiles:
         forms.alert(tr("vent_none_selected"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     # --- Определяем действие: пометить или снять ---
     vent_count = sum(1 for t in tiles if _get_int_param(t, "RF_Ventilated") == 1)
@@ -125,21 +128,21 @@ try:
     elif non_vent_count == 0:
         action = "unmark"
     else:
-        choice = forms.alert(
-            tr(
+        options = [
+            tr("vent_mark_option"),
+            tr("vent_unmark_option"),
+        ]
+        choice = forms.CommandSwitchWindow.show(
+            options,
+            message=tr(
                 "vent_mixed_message",
                 total=len(tiles),
                 vent=vent_count,
                 normal=non_vent_count,
             ),
-            title=TITLE,
-            options=[
-                tr("vent_mark_option"),
-                tr("vent_unmark_option"),
-            ],
         )
         if not choice:
-            raise Exception(_CANCELLED)
+            raise _Cancel()
         action = "mark" if choice == tr("vent_mark_option") else "unmark"
 
     # --- Ищем типы семейства (вент / стандартный) ---
@@ -183,8 +186,7 @@ try:
 
     forms.alert(msg, title=TITLE)
 
+except _Cancel:
+    pass
 except Exception as ex:
-    if str(ex) == _CANCELLED:
-        pass
-    else:
-        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

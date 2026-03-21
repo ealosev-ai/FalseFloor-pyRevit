@@ -313,46 +313,6 @@ def _find_obsolete_params(fam_doc, allowed_names):
     return obsolete
 
 
-def _remove_deprecated_params(fam_doc, allowed_names):
-    """Удаляет из семейства все RF_ parameters, которых нет в allowed_names.
-
-    Находит все параметры с префиксом RF_ и удаляет те,
-    которые не входят в актуальный набор для этого типа семейства.
-    Возвращает (removed_list, error_list).
-    """
-    fam_mgr = fam_doc.FamilyManager
-
-    to_remove = []
-    for p in fam_mgr.GetParameters():
-        if not p or not p.Definition or not p.Definition.Name:
-            continue
-        name = p.Definition.Name
-        if name.startswith(_RF_PREFIX) and name not in allowed_names:
-            to_remove.append(p)
-
-    if not to_remove:
-        return [], []
-
-    removed = []
-    errors = []
-    t = Transaction(fam_doc, "Remove deprecated RF params")
-    t.Start()
-    try:
-        for p in to_remove:
-            name = _safe_name(p.Definition) or "?"
-            try:
-                fam_mgr.RemoveParameter(p)
-                removed.append(name)
-            except Exception as ex:
-                errors.append("{}: {}".format(name, str(ex)))
-        t.Commit()
-    except Exception:
-        if t.HasStarted():
-            t.RollBack()
-        raise
-    return removed, errors
-
-
 def _add_params_to_family_doc(fam_doc, ext_defs, allowed_names=None):
     """Добавляет отсутствующие параметры в документ семейства.
 

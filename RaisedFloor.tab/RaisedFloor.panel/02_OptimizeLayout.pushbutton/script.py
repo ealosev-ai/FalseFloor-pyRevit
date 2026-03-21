@@ -28,7 +28,9 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-_CANCELLED = "@@CANCELLED@@"
+
+class _Cancel(Exception):
+    pass
 
 
 try:
@@ -37,7 +39,7 @@ try:
             tr("open_plan_shift"),
             title=TITLE_SHIFT,
         )
-        raise Exception("Active view is not a plan")
+        raise _Cancel()
 
     pick_filter = FloorOrPartSelectionFilter()
     try:
@@ -47,7 +49,7 @@ try:
             tr("pick_floor_or_part_prompt"),
         )
     except OperationCanceledException:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
@@ -157,7 +159,7 @@ try:
     )
 
     if not apply_answer:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     with revit.Transaction(tr("tx_apply_shift")):
         ok_x = set_double_param(floor, "RF_Offset_X", best["shift_x_internal"])
@@ -210,8 +212,7 @@ try:
 
     forms.alert("\n".join(done), title=TITLE_SHIFT)
 
+except _Cancel:
+    forms.alert(tr("operation_cancelled"), title=TITLE_SHIFT)
 except Exception as ex:
-    if str(ex) == _CANCELLED:
-        forms.alert(tr("operation_cancelled"), title=TITLE_SHIFT)
-    else:
-        forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_SHIFT)
+    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_SHIFT)

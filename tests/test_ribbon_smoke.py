@@ -19,6 +19,7 @@ import inspect
 import os
 import sys
 from types import ModuleType
+from typing import Any, cast
 
 import pytest
 
@@ -62,7 +63,7 @@ def _install_stubs():
     """Install lightweight Autodesk / clr / pyrevit / Clipper2 stubs for floor_* import."""
     if "Autodesk.Revit.DB" in sys.modules:
         # Ensure missing attributes exist even if partial stubs are installed
-        db = sys.modules["Autodesk.Revit.DB"]
+        db = cast(Any, sys.modules["Autodesk.Revit.DB"])
         for attr in ("Element", "ViewPlan", "FamilyInstance"):
             if not hasattr(db, attr):
                 setattr(db, attr, type(attr, (), {}))
@@ -70,7 +71,7 @@ def _install_stubs():
         _ensure_clipper_stubs()
         return
 
-    db = ModuleType("Autodesk.Revit.DB")
+    db = cast(Any, ModuleType("Autodesk.Revit.DB"))
 
     # Simple tag-style stubs
     db.StorageType = type("StorageType", (), {"Double": 0, "Integer": 1, "String": 2})
@@ -178,21 +179,21 @@ def _install_stubs():
     db.FilteredElementCollector = _FilteredElementCollector
 
     # Module hierarchy
-    autodesk = ModuleType("Autodesk")
-    revit_mod = ModuleType("Autodesk.Revit")
-    ui_mod = ModuleType("Autodesk.Revit.UI")
+    autodesk = cast(Any, ModuleType("Autodesk"))
+    revit_mod = cast(Any, ModuleType("Autodesk.Revit"))
+    ui_mod = cast(Any, ModuleType("Autodesk.Revit.UI"))
     autodesk.Revit = revit_mod
     revit_mod.DB = db
     revit_mod.UI = ui_mod
 
-    sel = ModuleType("Autodesk.Revit.UI.Selection")
+    sel = cast(Any, ModuleType("Autodesk.Revit.UI.Selection"))
     sel.ISelectionFilter = type("ISelectionFilter", (), {})
     sel.ObjectType = type("ObjectType", (), {"Element": 1})
 
-    exc = ModuleType("Autodesk.Revit.Exceptions")
+    exc = cast(Any, ModuleType("Autodesk.Revit.Exceptions"))
     exc.OperationCanceledException = type("OpCancelled", (Exception,), {})
 
-    struct = ModuleType("Autodesk.Revit.DB.Structure")
+    struct = cast(Any, ModuleType("Autodesk.Revit.DB.Structure"))
     struct.StructuralType = type("StructuralType", (), {"NonStructural": 0})
 
     for key, mod in {
@@ -217,7 +218,7 @@ def _ensure_clr_stubs():
     """Ensure clr module exists with all required attributes."""
     if "clr" not in sys.modules:
         sys.modules["clr"] = ModuleType("clr")
-    clr = sys.modules["clr"]
+    clr = cast(Any, sys.modules["clr"])
     if not hasattr(clr, "AddReference"):
         clr.AddReference = lambda *a: None
     if not hasattr(clr, "AddReferenceToFileAndPath"):
@@ -229,7 +230,7 @@ def _ensure_clipper_stubs():
     if "Clipper2Lib" in sys.modules:
         return
 
-    clipper = ModuleType("Clipper2Lib")
+    clipper = cast(Any, ModuleType("Clipper2Lib"))
 
     class _Point64:
         def __init__(self, x, y):
@@ -260,7 +261,7 @@ def _ensure_clipper_stubs():
     clipper.JoinType = type("JoinType", (), {"Miter": 1})
     clipper.EndType = type("EndType", (), {"Polygon": 1})
 
-    clipper_sub = ModuleType("Clipper2Lib.Clipper")
+    clipper_sub = cast(Any, ModuleType("Clipper2Lib.Clipper"))
     clipper_sub.Difference = lambda a, b, *_: a
     clipper_sub.Intersect = lambda a, b, *_: a
     clipper_sub.InflatePaths = lambda paths, *_: paths
@@ -353,6 +354,25 @@ def _extract_floor_imports_and_aliases(tree):
     return mapping
 
 
+def _extract_floor_module_aliases(tree):
+    """Map module alias -> module for import floor_* [as alias]."""
+    aliases = {}
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("floor_"):
+                    aliases[alias.asname or alias.name] = alias.name
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in aliases
+        ):
+            aliases[node.targets[0].id] = aliases[node.value.id]
+    return aliases
+
+
 def _find_floor_calls(tree, known_names):
     """Find Call(Name) nodes targeting known_names.
 
@@ -371,6 +391,32 @@ def _find_floor_calls(tree, known_names):
             continue
         n = len(node.args) + len(node.keywords)
         calls.append((node.func.id, n, node.lineno))
+    return calls
+
+
+def _find_floor_attr_calls(tree, module_aliases):
+    """Find Call(alias.func) where alias points to imported floor_* module.
+
+    Skips calls with *args or **kwargs (can't count reliably).
+    Returns [(module_alias, function_name, n_args, lineno)].
+    """
+    calls = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+        ):
+            continue
+        mod_alias = node.func.value.id
+        if mod_alias not in module_aliases:
+            continue
+        if any(isinstance(a, ast.Starred) for a in node.args):
+            continue
+        if any(kw.arg is None for kw in node.keywords):
+            continue
+        n = len(node.args) + len(node.keywords)
+        calls.append((mod_alias, node.func.attr, n, node.lineno))
     return calls
 
 
@@ -433,7 +479,9 @@ class TestRibbonCallSignatures:
         _, sigs, _ = _get_floor_api()
         tree = _parse_script(path)
         mapping = _extract_floor_imports_and_aliases(tree)
+        module_aliases = _extract_floor_module_aliases(tree)
         calls = _find_floor_calls(tree, set(mapping))
+        attr_calls = _find_floor_attr_calls(tree, set(module_aliases))
 
         errors = []
         for local_name, n_args, lineno in calls:
@@ -455,4 +503,26 @@ class TestRibbonCallSignatures:
                         lineno, local_name, n_args, min_a, max_a
                     )
                 )
+        for mod_alias, func_name, n_args, lineno in attr_calls:
+            mod_name = module_aliases[mod_alias]
+            key = (mod_name, func_name)
+            if key not in sigs:
+                continue
+            min_a, max_a, has_var = sigs[key]
+            label = "{}.{}".format(mod_alias, func_name)
+            if has_var:
+                if n_args < min_a:
+                    errors.append(
+                        "L{}: {}() got {} args, needs >= {}".format(
+                            lineno, label, n_args, min_a
+                        )
+                    )
+            elif n_args < min_a or n_args > max_a:
+                errors.append(
+                    "L{}: {}() got {} args, expected {}-{}".format(
+                        lineno, label, n_args, min_a, max_a
+                    )
+                )
         assert not errors, "Arg count mismatches:\n  " + "\n  ".join(errors)
+
+

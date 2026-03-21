@@ -143,21 +143,21 @@ def _find_symbols(family_name):
 
 def _pick_floor():
     if not isinstance(view, ViewPlan):
-        forms.alert("Открой план.", title=TITLE)
+        forms.alert(tr("open_plan"), title=TITLE)
         raise _Cancel()
 
     try:
         ref = uidoc.Selection.PickObject(
             ObjectType.Element,
             FloorOrPartSelectionFilter(),
-            "Выберите перекрытие фальшпола",
+            tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
         raise _Cancel()
 
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
-        raise Exception("Не удалось определить исходное перекрытие")
+        raise Exception(tr("source_floor_not_found"))
     return floor
 
 
@@ -457,7 +457,7 @@ def _choose_mirror_axis(line_coord, ref_coords):
 def _get_longeron_symbols(layer_mode):
     symbols = _find_symbols(FAMILY_LONGERON)
     if not symbols:
-        raise Exception("Семейство '{}' не найдено".format(FAMILY_LONGERON))
+        raise Exception(tr("family_not_found_fmt", family=FAMILY_LONGERON))
     names = sorted(symbols.keys())
 
     need_upper = layer_mode in ("Оба слоя", "Upper")
@@ -850,9 +850,7 @@ def main():
 
     if floor.LookupParameter(PARAM_ZONES) is None:
         forms.alert(
-            "Не найден параметр {}.\nСначала запусти 00 Параметры RF.".format(
-                PARAM_ZONES
-            ),
+            tr("reinf_param_not_found", param=PARAM_ZONES),
             title=TITLE,
         )
         raise _Cancel()
@@ -966,7 +964,7 @@ def main():
         preview_ids = _draw_preview(upper_new, lower_new, z0)
     uidoc.RefreshActiveView()
 
-    msg.extend(["", "Продолжить?"])
+    msg.extend(["", tr("continue")])
     confirmed = forms.alert("\n".join(msg), title=TITLE, yes=True, no=True)
 
     # Удаляем превью в любом случае
@@ -1043,4 +1041,4 @@ try:
 except _Cancel:
     pass
 except Exception as ex:
-    forms.alert("Ошибка: {}".format(str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

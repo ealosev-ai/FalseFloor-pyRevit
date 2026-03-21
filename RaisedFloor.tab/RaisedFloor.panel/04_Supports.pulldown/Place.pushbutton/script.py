@@ -47,9 +47,12 @@ view = doc.ActiveView
 
 TITLE = tr("title_supports")
 FAMILY_SUPPORT = "RF_Support"
-_CANCELLED = "@@CANCELLED@@"
 COORD_TOL = 1e-6
 DEFAULT_MAX_SPACING_MM = 1000.0  # макс. шаг между стойками вдоль лонжерона
+
+
+class _Cancel(Exception):
+    pass
 
 
 def _rc(v):
@@ -164,7 +167,7 @@ def _generate_support_nodes(lower_segs, max_spacing, support_half=0.0):
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     pick_filter = FloorOrPartSelectionFilter()
     try:
@@ -174,7 +177,7 @@ try:
             tr("pick_floor_prompt"),
         )
     except OperationCanceledException:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     picked_el = doc.GetElement(ref.ElementId)
     floor = get_source_floor(picked_el)
@@ -188,7 +191,7 @@ try:
             tr("supports_family_missing", family=FAMILY_SUPPORT),
             title=TITLE,
         )
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     if len(support_symbols) == 1:
         sym_support = support_symbols[0]
@@ -205,7 +208,7 @@ try:
             message=tr("supports_type_message"),
         )
         if not chosen_sup:
-            raise Exception(_CANCELLED)
+            raise _Cancel()
         sym_support = sup_dict[chosen_sup]
 
     # Спросить макс. шаг стоек
@@ -215,12 +218,12 @@ try:
         title=TITLE,
     )
     if not s_spacing:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
     try:
         max_spacing = mm_to_internal(float(s_spacing.strip()))
     except ValueError:
         forms.alert(tr("invalid_number"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     # Чтение данных
     lower_segs = _read_lower_segments(floor)
@@ -229,7 +232,7 @@ try:
             tr("lower_longerons_missing"),
             title=TITLE,
         )
-        raise Exception(_CANCELLED)
+        raise _Cancel()
     lower_axis, support_angle = _get_lower_axis_and_angle(lower_segs)
 
     v_keys, h_keys = _read_grid_lines(floor)
@@ -248,7 +251,7 @@ try:
             no=True,
         )
         if not proceed:
-            raise Exception(_CANCELLED)
+            raise _Cancel()
 
     if upper_longeron_ids:
         first_el = doc.GetElement(ElementId(upper_longeron_ids[0]))
@@ -279,7 +282,7 @@ try:
                 tr("supports_height_conflict"),
                 title=TITLE,
             )
-            raise Exception(_CANCELLED)
+            raise _Cancel()
         support_h = max(0.0, support_h)
     else:
         support_h = 0.0
@@ -317,7 +320,7 @@ try:
 
     if not level:
         forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     # Z стойки = верх перекрытия (стойка стоит на плите)
     bbox_data = get_bbox_xy(floor, view)
@@ -357,7 +360,7 @@ try:
         no=True,
     )
     if not confirm:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     # Размещение
     with revit.Transaction(tr("tx_place_supports")):
@@ -405,8 +408,7 @@ try:
         report += "\n" + tr("supports_height", height=internal_to_mm(support_h))
     forms.alert(report, title=TITLE)
 
+except _Cancel:
+    pass
 except Exception as ex:
-    if str(ex) == _CANCELLED:
-        pass
-    else:
-        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

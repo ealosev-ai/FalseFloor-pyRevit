@@ -36,8 +36,8 @@ falsepol_help/
 *.dll
 *.exe
 
-# Release archives
-release/*.zip
+# Release archives — keep the folder local-only, never commit zips
+release/
 
 # IDE
 .idea/

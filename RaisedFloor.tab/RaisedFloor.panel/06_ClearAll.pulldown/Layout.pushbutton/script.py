@@ -2,6 +2,7 @@
 """Убрать раскладку — удаляет плитки, стрингеры, стойки (сетка и контур остаются)."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
+from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
@@ -19,7 +20,10 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr("del_title_layout")
-_CANCELLED = "@@CANCELLED@@"
+
+
+class _Cancel(Exception):
+    pass
 
 # Только элементы раскладки — без сетки и контура
 _PARAM_MAP = [
@@ -33,13 +37,16 @@ _PARAM_ZONES = "RF_Reinf_Zones_JSON"
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
-    ref = uidoc.Selection.PickObject(
-        ObjectType.Element,
-        FloorOrPartSelectionFilter(),
-        tr("pick_floor_prompt"),
-    )
+    try:
+        ref = uidoc.Selection.PickObject(
+            ObjectType.Element,
+            FloorOrPartSelectionFilter(),
+            tr("pick_floor_prompt"),
+        )
+    except OperationCanceledException:
+        raise _Cancel()
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
         raise Exception(tr("source_floor_not_found"))
@@ -60,7 +67,7 @@ try:
 
     if total == 0:
         forms.alert(tr("del_layout_not_found"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     msg_lines = [tr("del_will_delete", count=total), ""]
     for _, label, ids in groups:
@@ -74,7 +81,7 @@ try:
         no=True,
     )
     if not confirm:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     with revit.Transaction(tr("tx_delete_layout")):
         deleted = 0
@@ -94,6 +101,7 @@ try:
 
     forms.alert(tr("del_done_all", deleted=deleted, total=total), title=TITLE)
 
+except _Cancel:
+    pass
 except Exception as ex:
-    if str(ex) != _CANCELLED:
-        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)

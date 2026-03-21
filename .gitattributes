@@ -1,0 +1,14 @@
+# Files excluded from git archive / GitHub ZIP downloads.
+# They do NOT affect pyRevit CLI install — pyRevit only reads .tab/ and lib/.
+
+tests/              export-ignore
+docs/               export-ignore
+htmlcov/            export-ignore
+.github/            export-ignore
+.venv/              export-ignore
+pytest.ini          export-ignore
+requirements-dev.txt export-ignore
+coverage.xml        export-ignore
+run_tests.py        export-ignore
+QWEN.md             export-ignore
+mcp.json            export-ignore

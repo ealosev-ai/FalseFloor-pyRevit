@@ -31,6 +31,12 @@ py -3.11 -m venv .venv
 # Только unit-тесты (без Revit API)
 .venv\\Scripts\\python -m pytest tests/ -m unit -v
 
+# Быстрый smoke-контур ribbon-скриптов (без coverage gate)
+.venv\\Scripts\\python -m pytest tests/test_ribbon_smoke.py --no-cov -q
+
+# То же через helper-скрипт
+.venv\\Scripts\\python run_smoke_tests.py
+
 # Интеграционные Revit-тесты (только в Revit-совместимом окружении)
 set RUN_REVIT_TESTS=1
 .venv\\Scripts\\python -m pytest tests/ -m revit -v
@@ -121,3 +127,4 @@ sys.path.insert(0, 'path/to/lib')
 
 **Версия:** v1.3.0
 **Последнее обновление:** 2026-03-20
+

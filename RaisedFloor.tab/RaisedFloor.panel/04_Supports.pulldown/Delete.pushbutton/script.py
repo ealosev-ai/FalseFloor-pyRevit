@@ -2,6 +2,7 @@
 """Удаление всех стоек, размещённых скриптом."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
+from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
@@ -18,18 +19,24 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr("del_title_supports")
-_CANCELLED = "@@CANCELLED@@"
+
+
+class _Cancel(Exception):
+    pass
 
 try:
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
-    ref = uidoc.Selection.PickObject(
-        ObjectType.Element,
-        FloorOrPartSelectionFilter(),
-        tr("pick_floor_prompt"),
-    )
+    try:
+        ref = uidoc.Selection.PickObject(
+            ObjectType.Element,
+            FloorOrPartSelectionFilter(),
+            tr("pick_floor_prompt"),
+        )
+    except OperationCanceledException:
+        raise _Cancel()
     floor = get_source_floor(doc.GetElement(ref.ElementId))
     if not floor:
         raise Exception(tr("source_floor_not_found"))
@@ -37,7 +44,7 @@ try:
     old_ids = parse_ids_from_string(get_string_param(floor, "RF_Supports_ID"))
     if not old_ids:
         forms.alert(tr("del_not_found_supports"), title=TITLE)
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     confirm = forms.alert(
         tr("del_confirm_supports", count=len(old_ids)),
@@ -46,7 +53,7 @@ try:
         no=True,
     )
     if not confirm:
-        raise Exception(_CANCELLED)
+        raise _Cancel()
 
     with revit.Transaction(tr("tx_delete_supports")):
         deleted = 0
@@ -62,6 +69,7 @@ try:
 
     forms.alert(tr("del_done_supports", count=deleted), title=TITLE)
 
+except _Cancel:
+    pass
 except Exception as ex:
-    if str(ex) != _CANCELLED:
-        forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
+    forms.alert(tr("error_inline_fmt", error=str(ex)), title=TITLE)
