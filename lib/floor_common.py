@@ -551,8 +551,13 @@ def cut_equal_1d(start, end, max_len, tol=1e-6):
     return segs
 
 
-def cut_at_positions_1d(start, end, max_len, positions, tol=1e-6):
-    """Нарезка [start, end] <= max_len с приоритетом стыков в positions."""
+def cut_at_positions_1d(start, end, max_len, positions, tol=1e-6, min_piece_ratio=0.25):
+    """Нарезка [start, end] <= max_len с приоритетом стыков в positions.
+
+    После нарезки: если крайние куски (первый/последний) короче
+    min_piece_ratio * max_len, они перебалансируются с соседним куском:
+    стык смещается в ближайшую к середине зоны допустимую position.
+    """
     if end - start <= max_len + tol:
         return [(start, end)]
 
@@ -572,12 +577,84 @@ def cut_at_positions_1d(start, end, max_len, positions, tol=1e-6):
             best = p
         if best is None:
             segs.extend(cut_equal_1d(cur, end, max_len, tol=tol))
-            return segs
+            return _rebalance_short_edges(segs, max_len, min_piece_ratio, tol, cands)
         segs.append((cur, best))
         cur = best
 
     segs.append((cur, end))
+    return _rebalance_short_edges(segs, max_len, min_piece_ratio, tol, cands)
+
+
+def _rebalance_short_edges(segs, max_len, min_piece_ratio, tol, positions):
+    """Убирает слишком короткие крайние куски, сохраняя стыки в positions.
+
+    Если крайний кусок < min_piece_ratio * max_len:
+    - Если слияние с соседом ≤ max_len → объединить в один.
+    - Иначе → найти в positions точку ближайшую к середине зоны,
+      чтобы оба куска были ≤ max_len. Если такой нет — оставить как есть.
+    """
+    if len(segs) < 2:
+        return segs
+
+    min_piece = max_len * min_piece_ratio
+
+    # Последний кусок слишком короткий
+    last_len = segs[-1][1] - segs[-1][0]
+    if last_len < min_piece - tol:
+        combined_start = segs[-2][0]
+        combined_end = segs[-1][1]
+        segs = segs[:-2] + _split_zone(
+            combined_start, combined_end, max_len, positions, tol
+        )
+
+    if len(segs) < 2:
+        return segs
+
+    # Первый кусок слишком короткий
+    first_len = segs[0][1] - segs[0][0]
+    if first_len < min_piece - tol:
+        combined_start = segs[0][0]
+        combined_end = segs[1][1]
+        segs = (
+            _split_zone(combined_start, combined_end, max_len, positions, tol)
+            + segs[2:]
+        )
+
     return segs
+
+
+def _split_zone(zone_start, zone_end, max_len, positions, tol):
+    """Разбивает зону [zone_start, zone_end] на 1 или 2 куска.
+
+    - Если зона ≤ max_len → один кусок.
+    - Иначе ищем лучшую позицию стыка из positions в зоне, чтобы:
+      - оба куска ≤ max_len
+      - стык как можно ближе к середине (максимально сбалансированно)
+    - Если подходящей position нет → равномерная нарезка.
+    """
+    total = zone_end - zone_start
+    if total <= max_len + tol:
+        return [(zone_start, zone_end)]
+
+    mid = (zone_start + zone_end) / 2.0
+    best_pos = None
+    best_dist = None
+    for p in positions:
+        if p <= zone_start + tol or p >= zone_end - tol:
+            continue
+        left = p - zone_start
+        right = zone_end - p
+        if left > max_len + tol or right > max_len + tol:
+            continue
+        dist = abs(p - mid)
+        if best_pos is None or dist < best_dist:
+            best_pos = p
+            best_dist = dist
+
+    if best_pos is not None:
+        return [(zone_start, best_pos), (best_pos, zone_end)]
+
+    return cut_equal_1d(zone_start, zone_end, max_len, tol=tol)
 
 
 def split_orthogonal_segments(segs, max_len, tol=1e-6, positions=None):
@@ -662,11 +739,15 @@ def compute_stagger_positions(main_keys, lower_positions):
     }
 
 
-def drop_near_parallel(contour_segs, grid_segs, tol, seg_tol=1e-6):
+def drop_near_parallel(contour_segs, grid_segs, tol, seg_tol=1e-6, protect_segs=None):
     """Отсеивает контурные сегменты, параллельные и ближе tol к осевым.
 
     Сравнение по поперечной координате: X для вертикальных, Y для горизонтальных.
     Если осевой и контурный перекрываются по длине — контурный удаляется.
+
+    Если передан protect_segs (например, верхние hole-контурные), нижний
+    контурный НЕ удаляется, если с ним пересекается хотя бы один protect-сегмент
+    (верхнему нужна опора снизу).
 
     Returns:
         (kept_segs, dropped_count)
@@ -681,6 +762,29 @@ def drop_near_parallel(contour_segs, grid_segs, tol, seg_tol=1e-6):
         if abs(x1 - x2) < seg_tol:
             return False, (x1 + x2) / 2.0, min(y1, y2), max(y1, y2)
         return None, 0, 0, 0
+
+    def _segs_cross(seg_a, seg_b):
+        """True если два ортогональных сегмента пересекаются."""
+        a_h, a_pos, a_min, a_max = _key(seg_a)
+        b_h, b_pos, b_min, b_max = _key(seg_b)
+        if a_h is None or b_h is None or a_h == b_h:
+            return False
+        # a — горизонтальный (Y=a_pos, X∈[a_min,a_max])
+        # b — вертикальный   (X=b_pos, Y∈[b_min,b_max])
+        h_seg, h_pos, h_min, h_max = (
+            (a_pos, a_min, a_max, None) if a_h else (b_pos, b_min, b_max, None)
+        )
+        v_seg, v_pos, v_min, v_max = (
+            (b_pos, b_min, b_max, None) if a_h else (a_pos, a_min, a_max, None)
+        )
+        # Переупаковка
+        if a_h:
+            hy, hx_min, hx_max = a_pos, a_min, a_max
+            vx, vy_min, vy_max = b_pos, b_min, b_max
+        else:
+            hy, hx_min, hx_max = b_pos, b_min, b_max
+            vx, vy_min, vy_max = a_pos, a_min, a_max
+        return hx_min - tol <= vx <= hx_max + tol and vy_min - tol <= hy <= vy_max + tol
 
     grid_h, grid_v = [], []
     for seg in grid_segs:
@@ -700,6 +804,11 @@ def drop_near_parallel(contour_segs, grid_segs, tol, seg_tol=1e-6):
                 if g_smin < smax + seg_tol and g_smax > smin - seg_tol:
                     dominated = True
                     break
+        if dominated and protect_segs:
+            for p_seg in protect_segs:
+                if _segs_cross(seg, p_seg):
+                    dominated = False
+                    break
         if dominated:
             dropped += 1
         else:
@@ -707,46 +816,169 @@ def drop_near_parallel(contour_segs, grid_segs, tol, seg_tol=1e-6):
     return kept, dropped
 
 
-def build_support_nodes(lower_segs, max_spacing, support_half=0.0, tol=1e-6):
-    """Узлы стоек вдоль нижних лонжеронов с дедупликацией."""
+def build_support_nodes(
+    lower_segs, max_spacing, support_half=0.0, tol=1e-6, grid_positions=None
+):
+    """Узлы стоек вдоль нижних лонжеронов с дедупликацией.
+
+    Считает каждый сегмент стрингера отдельно:
+    - обязательные: начало/конец сегмента;
+    - на общих стыках соседних сегментов стойка ставится в точку стыка
+      (одна на два стрингера);
+    - промежуточные: стараемся ставить на grid_positions (если переданы),
+      с учётом max_spacing.
+
+    В шахматной раскладке всего 2 варианта нарезки — начало/конец
+    соседних стрингеров сдвинуты на 1 пролёт, но промежуточные
+    стойки выравниваются в ряд по одним и тем же grid_positions.
+    """
 
     def _rc(v):
         return round(v, 6)
 
+    def _anchor_towards_inside(along, other, shared_endpoint):
+        """Смещает край в сторону тела сегмента, если это не стык."""
+        if shared_endpoint or support_half <= tol:
+            return along
+        delta = other - along
+        if abs(delta) <= tol:
+            return along
+        shift = min(support_half, abs(delta))
+        return along + (shift if delta > 0 else -shift)
+
+    # --- Определяем ось нижних стрингеров ---
+    seg_axis = None
+    for x1, y1, x2, y2 in lower_segs:
+        dxa = abs(x2 - x1)
+        dya = abs(y2 - y1)
+        if dxa < tol and dya < tol:
+            continue
+        seg_axis = "X" if dxa >= dya else "Y"
+        break
+    if seg_axis is None:
+        return []
+
+    # --- Считаем кратность концов (стык = общая точка >= 2 сегментов) ---
     endpoint_count = {}
     for x1, y1, x2, y2 in lower_segs:
-        p_start = (_rc(x1), _rc(y1))
-        p_end = (_rc(x2), _rc(y2))
-        endpoint_count[p_start] = endpoint_count.get(p_start, 0) + 1
-        endpoint_count[p_end] = endpoint_count.get(p_end, 0) + 1
+        p0 = (_rc(x1), _rc(y1))
+        p1 = (_rc(x2), _rc(y2))
+        endpoint_count[p0] = endpoint_count.get(p0, 0) + 1
+        endpoint_count[p1] = endpoint_count.get(p1, 0) + 1
 
+    # --- Расставляем стойки по каждому сегменту ---
     support_set = set()
     for x1, y1, x2, y2 in lower_segs:
-        length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        if length < tol:
+        if seg_axis == "X":
+            along0 = _rc(x1)
+            along1 = _rc(x2)
+            perp = _rc((y1 + y2) / 2.0)
+        else:
+            along0 = _rc(y1)
+            along1 = _rc(y2)
+            perp = _rc((x1 + x2) / 2.0)
+
+        p0 = (_rc(x1), _rc(y1))
+        p1 = (_rc(x2), _rc(y2))
+
+        # Обязательные края сегмента:
+        # - в стыке оставляем точное положение,
+        # - на свободном конце даём отступ support_half внутрь сегмента.
+        s0 = _anchor_towards_inside(
+            along0,
+            along1,
+            endpoint_count.get(p0, 1) > 1,
+        )
+        s1 = _anchor_towards_inside(
+            along1,
+            along0,
+            endpoint_count.get(p1, 1) > 1,
+        )
+
+        span_start = min(s0, s1)
+        span_end = max(s0, s1)
+        if span_end - span_start < tol:
+            val = _rc((s0 + s1) / 2.0)
+            if seg_axis == "X":
+                support_set.add((val, perp))
+            else:
+                support_set.add((perp, val))
             continue
 
-        dx = (x2 - x1) / length
-        dy = (y2 - y1) / length
-        p_start = (_rc(x1), _rc(y1))
-        p_end = (_rc(x2), _rc(y2))
+        candidates = []
+        if grid_positions is not None:
+            for gp in grid_positions:
+                if gp <= span_start + tol or gp >= span_end - tol:
+                    continue
+                candidates.append(gp)
 
-        if endpoint_count.get(p_start, 1) > 1 or support_half < tol:
-            support_set.add(p_start)
-        else:
-            support_set.add((_rc(x1 + dx * support_half), _rc(y1 + dy * support_half)))
-
-        if endpoint_count.get(p_end, 1) > 1 or support_half < tol:
-            support_set.add(p_end)
-        else:
-            support_set.add((_rc(x2 - dx * support_half), _rc(y2 - dy * support_half)))
-
-        if length > max_spacing + tol:
-            n_spans = int(math.ceil(length / max_spacing))
-            for i in range(1, n_spans):
-                t = float(i) / n_spans
-                px = x1 + t * (x2 - x1)
-                py = y1 + t * (y2 - y1)
-                support_set.add((_rc(px), _rc(py)))
+        selected = _select_line_supports(
+            span_start,
+            span_end,
+            candidates,
+            max_spacing,
+            tol,
+        )
+        for val in selected:
+            if seg_axis == "X":
+                support_set.add((_rc(val), perp))
+            else:
+                support_set.add((perp, _rc(val)))
 
     return sorted(support_set)
+
+
+def _select_line_supports(start, end, grid_candidates, min_spacing, tol):
+    """Расставляет стойки вдоль линии [start..end].
+
+    Начало и конец — обязательны. Промежуточные — на позициях из
+    grid_candidates (линии сетки), не ближе min_spacing друг к другу
+    и к началу/концу.
+
+    Если grid_candidates пуст или не покрывает длинный пролёт —
+    добавляет равномерные промежуточные (страховка).
+    """
+    length = end - start
+    if length < tol:
+        return [start]
+
+    result = [start, end]
+
+    if length <= min_spacing + tol:
+        return result
+
+    # Фильтр: далеко от start и end
+    valid = sorted(
+        g
+        for g in grid_candidates
+        if g > start + min_spacing - tol and g < end - min_spacing + tol
+    )
+
+    # Жадный отбор: не ближе min_spacing друг к другу
+    last = start
+    for g in valid:
+        if g - last < min_spacing - tol:
+            continue
+        if end - g < min_spacing - tol:
+            break
+        result.append(g)
+        last = g
+
+    # Страховка: если сетка не закрывает длинный пролёт, добиваем равномерно,
+    # но не нарушаем минимальный шаг.
+    result.sort()
+    extra = []
+    if min_spacing > tol:
+        for i in range(len(result) - 1):
+            span = result[i + 1] - result[i]
+            if span <= 2.0 * min_spacing + tol:
+                continue
+            n_add = int(math.floor(span / min_spacing)) - 1
+            if n_add <= 0:
+                continue
+            step = span / float(n_add + 1)
+            for j in range(1, n_add + 1):
+                extra.append(result[i] + step * j)
+    result.extend(extra)
+    result.sort()
+    return result
