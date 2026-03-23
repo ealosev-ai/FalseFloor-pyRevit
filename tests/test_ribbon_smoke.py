@@ -524,5 +524,3 @@ class TestRibbonCallSignatures:
                     )
                 )
         assert not errors, "Arg count mismatches:\n  " + "\n  ".join(errors)
-
-
