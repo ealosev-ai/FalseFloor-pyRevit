@@ -186,6 +186,7 @@ EN:
 
 - Руководство пользователя / User guide: `RaisedFloor.tab/RaisedFloor.panel/README.md`
 - Руководство разработчика / Developer guide: `docs/DEVELOPER_GUIDE.md`
+- Локальная справка для разработки / Local development reference: `docs/reference/README.md`
 - История изменений / Changelog: `CHANGELOG.md`
 
 ---

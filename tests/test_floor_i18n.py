@@ -146,3 +146,17 @@ class TestTextDictionary:
 
         for key in required_keys:
             assert key in floor_i18n._TEXT["en"], f"Missing key: {key}"
+
+    def test_family_prefix_message_uses_rf(self):
+        """Family prefix hints must reference RF_ in both locales."""
+        if "floor_i18n" in sys.modules:
+            del sys.modules["floor_i18n"]
+
+        import floor_i18n
+
+        ru_text = floor_i18n._TEXT["ru"]["fam_no_families"]
+        en_text = floor_i18n._TEXT["en"]["fam_no_families"]
+
+        assert "RF_" in ru_text
+        assert "RF_" in en_text
+        assert "\u0424\u041f_" not in en_text

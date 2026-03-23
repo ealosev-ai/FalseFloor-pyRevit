@@ -58,7 +58,7 @@ jobs:
 
       - name: Run pytest
         run: |
-          pytest tests/ -m "not revit" -v --tb=short --cov=lib --cov-report=term-missing --cov-report=xml
+          pytest tests/ -m "not revit" -v --tb=short --cov=lib --cov-fail-under=60 --cov-report=term-missing --cov-report=xml
         env:
           PYTHONPATH: ${{ github.workspace }};${{ github.workspace }}/lib
 
