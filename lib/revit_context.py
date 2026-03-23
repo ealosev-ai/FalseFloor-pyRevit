@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
+from Autodesk.Revit.DB import ElementId  # type: ignore
 from pyrevit import revit  # type: ignore
+
+try:
+    from Autodesk.Revit.DB import ViewPlan  # type: ignore
+except Exception:
+    ViewPlan = None
 
 
 def get_doc():
@@ -45,4 +50,6 @@ def get_element(element_id, doc=None):
 def require_view_plan():
     """Return the active view if it is a plan view, otherwise None."""
     view = get_active_view()
+    if ViewPlan is None:
+        return view
     return view if isinstance(view, ViewPlan) else None

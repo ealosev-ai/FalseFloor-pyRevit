@@ -3,9 +3,7 @@
 Run with: pytest tests/test_stringer_logic.py -v
 """
 
-import importlib.util
 import os
-import sys
 from typing import Any
 
 import pytest
@@ -21,7 +19,6 @@ def _load_pure_functions():
     """
     import ast
     import math
-    import textwrap
 
     src_path = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..", "lib", "floor_common.py")
@@ -68,7 +65,6 @@ class TestComputeStaggerPositions:
         assert r["lp_odd"] == [500.0, 1500.0]
 
         # mk_mids = midpoints between consecutive main_keys
-        expected_mids = [300.0, 900.0, 1500.0]
         assert r["mk_mids_even"] == pytest.approx([300.0, 1500.0])
         assert r["mk_mids_odd"] == pytest.approx([900.0])
 

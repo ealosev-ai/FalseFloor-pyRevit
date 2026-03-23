@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Удаление ВСЕХ элементов фальшпола: плитки, стрингеры, стойки, сетка, контур."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
@@ -21,6 +21,7 @@ TITLE = tr("del_title_all")
 
 class _Cancel(Exception):
     pass
+
 
 # Параметры → какие ID хранят элементы фальшпола
 _PARAM_MAP = [

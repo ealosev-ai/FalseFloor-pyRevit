@@ -204,7 +204,10 @@ def test_rect_and_bbox_intersection_helpers():
 def test_extension_root_detection():
     mod = _import_floor_exact()
     root = mod._get_extension_root()
-    assert root.lower().endswith(".extension")
+    assert root.lower().endswith(".extension") or (
+        os.path.isdir(os.path.join(root, "lib"))
+        and os.path.isdir(os.path.join(root, "RaisedFloor.tab"))
+    )
 
 
 def test_point_in_polygon_and_decompose_void_rects():
@@ -863,7 +866,7 @@ def test_scan_min_width_empty_and_degenerate_and_l_shape():
     assert mod._scan_min_width_mm(dot_paths) == 0.0
 
     # L-shaped polygon: overall bbox 200×200, but narrows to 50mm in one arm
-    s = SCALE
+    s = mod.SCALE
     l_path = mod.Path64()
     l_path.Add(mod.Point64(0, 0))
     l_path.Add(mod.Point64(int(200 * s), 0))
@@ -885,14 +888,13 @@ def test_scan_min_width_empty_and_degenerate_and_l_shape():
 
 def test_compute_voids_l_shaped_void():
     mod = _import_floor_exact()
-    SCALE = 1000
 
     # Cell: 0–600 × 0–600 mm
     cell_bbox = (0.0, 0.0, 600.0, 600.0)
 
     # Clipped area: L-shape = full cell minus top-right 200×200 corner
     # Vertices of the L:  (0,0)→(600,0)→(600,400)→(400,400)→(400,600)→(0,600)
-    s = SCALE
+    s = mod.SCALE
     l_path = mod.Path64()
     l_path.Add(mod.Point64(0, 0))
     l_path.Add(mod.Point64(int(600 * s), 0))
@@ -1311,7 +1313,6 @@ def test_decompose_void_tiny_cells_skipped():
 
 def test_compute_voids_rectangular_void_and_overflow():
     mod = _import_floor_exact()
-    SCALE = 1000
 
     # Cell: 0–600 × 0–600 mm
     cell_bbox = (0.0, 0.0, 600.0, 600.0)
@@ -1330,7 +1331,6 @@ def test_compute_voids_rectangular_void_and_overflow():
 def test_compute_voids_has_unhandled_when_more_than_max():
     """Force more items than max_voids to cover has_unhandled_voids=True."""
     mod = _import_floor_exact()
-    SCALE = 1000
 
     cell_bbox = (0.0, 0.0, 600.0, 600.0)
 
@@ -2074,9 +2074,9 @@ def test_rank_key_unsplit_always_dominates():
     # "good" result: 1 unsplit, but perfect everything else
     good_other = (1, 0, 0, 0, 0.0, 0, 0, -100, 0, 0, -999.0, 0.0, 0.0, 0.0)
 
-    assert (
-        bad_other < good_other
-    ), "0 unsplit must ALWAYS beat 1 unsplit even with terrible other metrics"
+    assert bad_other < good_other, (
+        "0 unsplit must ALWAYS beat 1 unsplit even with terrible other metrics"
+    )
 
 
 def test_rank_key_non_viable_dominates_after_unsplit():

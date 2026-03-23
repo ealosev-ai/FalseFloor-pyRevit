@@ -22,6 +22,7 @@ TITLE = tr("del_title_layout")
 class _Cancel(Exception):
     pass
 
+
 # Только элементы раскладки — без сетки и контура
 _PARAM_MAP = [
     ("RF_Supports_ID", "label_supports"),

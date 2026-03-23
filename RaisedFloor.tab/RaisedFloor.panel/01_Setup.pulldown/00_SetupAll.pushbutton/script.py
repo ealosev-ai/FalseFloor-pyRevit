@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
@@ -31,6 +31,7 @@ TITLE_PREPARE_ALL = tr("prepare_all_title")
 CONTOUR_STYLE_NAME = "RF_Contour"
 CONTOUR_COLOR = Color(0, 255, 0)
 
+
 def mm_to_internal(mm_value):
     return float(mm_value) / 304.8
 
@@ -59,7 +60,6 @@ def get_top_face_and_loops(floor):
     if view:
         opt.DetailLevel = view.DetailLevel
 
-    doc = get_doc()
     geom = floor.get_Geometry(opt)
     if not geom:
         return None, None

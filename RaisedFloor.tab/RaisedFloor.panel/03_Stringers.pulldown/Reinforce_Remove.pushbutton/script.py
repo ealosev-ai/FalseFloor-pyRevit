@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Стрингеры: удалить зону усиления по ID."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore

@@ -23,7 +23,7 @@ class TestNormalizePath:
         # Import inline to avoid Revit dependencies
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location(
+        _ = importlib.util.spec_from_file_location(
             "floor_utils_module",
             os.path.join(os.path.dirname(__file__), "..", "lib", "floor_utils.py"),
         )

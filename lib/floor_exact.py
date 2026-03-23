@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import math
 import os
@@ -51,10 +51,10 @@ _BBOX_TOL_MM = (
 
 
 def _get_extension_root():
-    """Возвращает корневую папку расширения (.extension).
+    """Возвращает корневую папку расширения.
 
     Использует __file__ для определения пути и поднимается вверх
-    до нахождения папки с расширением.
+    до нахождения папки с ожидаемой структурой расширения.
 
     Returns:
         str: Абсолютный путь к корню расширения.
@@ -73,6 +73,10 @@ def _get_extension_root():
         iterations += 1
         dir_lower = search_dir.lower()
         if dir_lower.endswith(".extension"):
+            return search_dir
+        if os.path.isdir(os.path.join(search_dir, "lib")) and os.path.isdir(
+            os.path.join(search_dir, "RaisedFloor.tab")
+        ):
             return search_dir
 
         parent = os.path.dirname(search_dir)

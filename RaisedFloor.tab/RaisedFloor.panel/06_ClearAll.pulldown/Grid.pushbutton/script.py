@@ -21,6 +21,7 @@ TITLE = tr("del_title_grid")
 class _Cancel(Exception):
     pass
 
+
 _PARAM_MAP = [
     ("RF_Grid_Lines_ID", "label_grid_lines"),
     ("RF_Base_Marker_ID", "label_base_marker"),

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import (  # type: ignore
     Color,

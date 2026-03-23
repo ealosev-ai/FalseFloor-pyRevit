@@ -34,7 +34,6 @@ except ImportError:
 
 # These are always available
 from Autodesk.Revit.DB import Category, CategorySet, Document  # type: ignore
-from Autodesk.Revit.DB import ExternalDefinitionCreationOptions  # type: ignore
 
 
 def get_storage_type_id(
@@ -122,11 +121,11 @@ def create_category_set(
     built_in_categories: list,
 ) -> CategorySet:
     """Create a CategorySet from a list of BuiltInCategory values.
-    
+
     Args:
         doc: Revit document.
         built_in_categories: List of BuiltInCategory enum values.
-        
+
     Returns:
         CategorySet containing the specified categories.
     """
@@ -142,10 +141,10 @@ def get_existing_parameter_bindings(
     doc: Document,
 ) -> Dict[str, Any]:
     """Collect existing parameter bindings in the project.
-    
+
     Args:
         doc: Revit document.
-        
+
     Returns:
         Dictionary mapping parameter names to their definitions.
     """
@@ -153,21 +152,21 @@ def get_existing_parameter_bindings(
     binding_map = doc.ParameterBindings
     iterator = binding_map.ForwardIterator()
     iterator.Reset()
-    
+
     while iterator.MoveNext():
         definition = iterator.Key
         if definition and definition.Name:
             existing[definition.Name] = definition
-    
+
     return existing
 
 
 def safe_get_name(obj: Any) -> Optional[str]:
     """Safely get the Name property from a Revit object.
-    
+
     Args:
         obj: Object that may have a Name property.
-        
+
     Returns:
         The name string, or None if the object is None or has no Name.
     """
@@ -181,12 +180,12 @@ def safe_get_name(obj: Any) -> Optional[str]:
 
 def normalize_path(path: str) -> str:
     """Normalize a file path for cross-platform compatibility.
-    
+
     Handles Windows UNC paths and normalizes separators.
-    
+
     Args:
         path: File path to normalize.
-        
+
     Returns:
         Normalized absolute path.
     """
@@ -195,10 +194,10 @@ def normalize_path(path: str) -> str:
 
 def parse_version_string(version_str: str) -> Tuple[int, ...]:
     """Parse a version string into a tuple of integers.
-    
+
     Args:
         version_str: Version string like "1.2.3" or "v1.2.0".
-        
+
     Returns:
         Tuple of integers (major, minor, patch).
     """
@@ -212,15 +211,16 @@ def format_error_message(
     include_traceback: bool = False,
 ) -> str:
     """Format an error message for display.
-    
+
     Args:
         error: The exception to format.
         include_traceback: Whether to include traceback.
-        
+
     Returns:
         Formatted error message string.
     """
     if include_traceback:
         import traceback
+
         return "{}\n\n{}".format(str(error), traceback.format_exc())
     return str(error)

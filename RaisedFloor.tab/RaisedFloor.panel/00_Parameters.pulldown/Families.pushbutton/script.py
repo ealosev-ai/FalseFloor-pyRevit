@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Параметры семейств — добавляет RF_-параметры в загруженные RF-семейства.
 
 Открывает каждое семейство с префиксом «RF_», добавляет недостающие
@@ -24,7 +24,7 @@ from floor_utils import (  # type: ignore
     get_storage_type_id,
     safe_get_name,
 )
-from pyrevit import forms, revit  # type: ignore
+from pyrevit import forms  # type: ignore
 from revit_context import get_doc  # type: ignore
 
 doc = None

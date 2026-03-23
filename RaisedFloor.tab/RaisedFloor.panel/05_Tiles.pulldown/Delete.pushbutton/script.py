@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Удаление всех плиток, размещённых скриптом."""
 
 from Autodesk.Revit.DB import ElementId, ViewPlan  # type: ignore
@@ -20,6 +20,7 @@ TITLE = tr("del_title_tiles")
 
 class _Cancel(Exception):
     pass
+
 
 try:
     doc = get_doc()

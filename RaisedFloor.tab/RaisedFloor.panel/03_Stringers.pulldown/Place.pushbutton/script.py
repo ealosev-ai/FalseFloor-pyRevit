@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """06 Стрингеры — размещение верхних и нижних.
 
 Логика:
@@ -631,8 +631,6 @@ def main():
     frame_mm_upper = MOUNTING_GAP_MM + pw_upper_mm / 2.0
     frame_mm_lower = max(support_half_mm, pw_lower_mm / 2.0) + MOUNTING_GAP_MM
 
-    frame_h_upper, frame_v_upper = [], []
-    frame_h_lower, frame_v_lower = [], []
     # Раздельно outer/holes — для отсева дублей только вокруг дыр
     frame_h_upper_wall, frame_v_upper_wall = [], []
     frame_h_upper_hole, frame_v_upper_hole = [], []
@@ -644,8 +642,6 @@ def main():
             fu_outer, fu_holes = offset_zone_contours(zone, frame_mm_upper)
             fhu1, fvu1, sku1 = _edges_from_paths64(fu_outer)
             fhu2, fvu2, sku2 = _edges_from_paths64(fu_holes)
-            frame_h_upper = fhu1 + fhu2
-            frame_v_upper = fvu1 + fvu2
             frame_h_upper_wall, frame_v_upper_wall = fhu1, fvu1
             frame_h_upper_hole, frame_v_upper_hole = fhu2, fvu2
             contour_skipped += sku1 + sku2
@@ -657,8 +653,6 @@ def main():
             fl_outer, fl_holes = offset_zone_contours(zone, frame_mm_lower)
             fhl1, fvl1, skl1 = _edges_from_paths64(fl_outer)
             fhl2, fvl2, skl2 = _edges_from_paths64(fl_holes)
-            frame_h_lower = fhl1 + fhl2
-            frame_v_lower = fvl1 + fvl2
             frame_h_lower_wall, frame_v_lower_wall = fhl1, fvl1
             frame_h_lower_hole, frame_v_lower_hole = fhl2, fvl2
             contour_skipped += skl1 + skl2

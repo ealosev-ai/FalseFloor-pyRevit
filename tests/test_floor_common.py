@@ -12,12 +12,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.revit]
 pytest.importorskip("Autodesk.Revit.DB", reason="Revit API not available")
 
 # Mock revit module before importing floor_common
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock  # noqa: E402
 
 sys.modules["pyrevit"] = MagicMock()
 sys.modules["pyrevit.revit"] = MagicMock()
 
-from floor_common import (
+from floor_common import (  # noqa: E402
     build_positions,
     build_support_nodes,
     cut_at_positions_1d,

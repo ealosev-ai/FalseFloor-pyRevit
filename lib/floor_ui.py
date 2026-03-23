@@ -240,7 +240,6 @@ def show_report_dialog(lines, title, yes_no=False):
     BRUSH_GOOD = SolidColorBrush(Color.FromRgb(22, 140, 55))
     BRUSH_DIM = SolidColorBrush(Color.FromRgb(130, 130, 130))
     BRUSH_NORMAL = SolidColorBrush(Color.FromRgb(40, 40, 40))
-    BRUSH_BTN_BG = SolidColorBrush(Color.FromRgb(62, 62, 66))
     BRUSH_BTN_FG = SolidColorBrush(Color.FromRgb(255, 255, 255))
     BRUSH_ACCENT = SolidColorBrush(Color.FromRgb(0, 122, 204))
 
