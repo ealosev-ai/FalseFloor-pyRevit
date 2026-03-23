@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import os
 
@@ -187,6 +187,8 @@ _TEXT = {
         "long_lower_count": "Нижних: {count} ({positions} позиций)",
         "long_lower_step": "Шаг нижних: {step:.0f} мм",
         "long_max_length": "Макс. длина: {length:.0f} мм",
+        "long_support_h": "Высота стойки (расч.): {height:.0f} мм",
+        "long_support_height_zero": "!!! Высота стойки = 0 мм. Нижние стрингеры будут лежать на перекрытии.",
         "long_gap": "Зазор: {gap} мм",
         "long_z0": "z0: {z:.0f} мм",
         "long_dz": "dz верх: {upper:.0f}, dz низ: {lower:.0f} мм",
@@ -196,7 +198,7 @@ _TEXT = {
         "long_done": "Готово.\nВерхних: {upper}\nНижних: {lower}\nУдалено: {deleted}",
         "supports_family_missing": "Семейство '{family}' не найдено.\nЗагрузи его.",
         "supports_type_message": "Типоразмер стойки:",
-        "prompt_support_spacing": "Макс. шаг стоек вдоль стрингера (мм):",
+        "prompt_support_spacing": "Мин. шаг стоек (не чаще чем, мм):",
         "lower_longerons_missing": "Нижние стрингеры не найдены.\nСначала запусти 3 Стрингеры.",
         "supports_tiles_missing": "Плитки ещё не размещены.\n\nЭто не мешает размещению: высота стойки будет рассчитана по высоте фальшпола и параметру RF_Tile_Thickness, который задаётся на этапе Подготовка.\nЕсли RF_Tile_Thickness не заполнен, будет использован fallback из семейства RF_Tile.\n\nПосле размещения плиток можно будет визуально проверить раскладку и при необходимости перестроить стойки.\n\nПродолжить размещение стоек сейчас?",
         "supports_upper_missing": "Верхние стрингеры не найдены.\n\nСтойки можно разместить по нижним стрингерам, но итоговая высотная схема\nбудет неполной до размещения верхних. После добавления верхних стрингеров\nстойки может потребоваться перестроить.\n\nПродолжить размещение стоек сейчас?",
@@ -205,7 +207,7 @@ _TEXT = {
         "supports_count": "Стоек: {count}",
         "supports_lower_count": "Нижних стрингеров: {count}",
         "supports_axis": "Ось нижних: {axis}",
-        "supports_max_spacing": "Макс. шаг: {spacing:.0f} мм",
+        "supports_min_spacing": "Мин. шаг: {spacing:.0f} мм",
         "supports_base": "Опора: {size:.0f} мм",
         "supports_height": "Высота стойки: {height:.0f} мм",
         "supports_height_zero": "!!! Высота стойки = 0 (не рассчитана)",
@@ -494,6 +496,8 @@ _TEXT = {
         "long_lower_count": "Lower: {count} ({positions} positions)",
         "long_lower_step": "Lower spacing: {step:.0f} mm",
         "long_max_length": "Max length: {length:.0f} mm",
+        "long_support_h": "Support height (calc): {height:.0f} mm",
+        "long_support_height_zero": "!!! Support height = 0 mm. Lower stringers will sit on slab top.",
         "long_gap": "Gap: {gap} mm",
         "long_z0": "z0: {z:.0f} mm",
         "long_dz": "dz upper: {upper:.0f}, dz lower: {lower:.0f} mm",
@@ -503,7 +507,7 @@ _TEXT = {
         "long_done": "Done.\nUpper: {upper}\nLower: {lower}\nDeleted: {deleted}",
         "supports_family_missing": "Family '{family}' not found.\nLoad it.",
         "supports_type_message": "Support type:",
-        "prompt_support_spacing": "Max support spacing along stringer (mm):",
+        "prompt_support_spacing": "Min support spacing (no closer than, mm):",
         "lower_longerons_missing": "Lower stringers not found.\nRun 3 Stringers first.",
         "supports_tiles_missing": "Tiles have not been placed yet.\n\nThis does not block placement: support height will be calculated from raised-floor height and the RF_Tile_Thickness value, which is now set during Prepare.\nIf RF_Tile_Thickness is empty, a fallback from the RF_Tile family will be used.\n\nAfter tile placement you can visually verify the layout and rebuild supports if needed.\n\nContinue placing supports now?",
         "supports_upper_missing": "Upper stringers not found.\n\nSupports can be placed using lower stringers, but the final height stack\nwill remain incomplete until upper stringers are added. After that,\nsupports may need to be rebuilt.\n\nContinue placing supports now?",
@@ -512,7 +516,7 @@ _TEXT = {
         "supports_count": "Supports: {count}",
         "supports_lower_count": "Lower stringers: {count}",
         "supports_axis": "Lower axis: {axis}",
-        "supports_max_spacing": "Max spacing: {spacing:.0f} mm",
+        "supports_min_spacing": "Min spacing: {spacing:.0f} mm",
         "supports_base": "Base plate: {size:.0f} mm",
         "supports_height": "Support height: {height:.0f} mm",
         "supports_height_zero": "!!! Support height = 0 (not calculated)",
@@ -605,7 +609,7 @@ _TEXT = {
         "fam_all_ok": "All RF_ parameters already exist in the family.",
         "fam_obsolete_header": "\u26a0 Obsolete (remove manually after rebinding geometry):",
         "fam_added": "Added: {count}",
-        "fam_no_families": "No loaded families with prefix '\u0424\u041f_'.",
+        "fam_no_families": "No loaded families with prefix 'RF_'.",
         "fam_found": "Families found: {count}",
         "fam_params_info": "  {name} \u2192 {count} params",
         "fam_confirm_add": "Add missing RF_ parameters?",

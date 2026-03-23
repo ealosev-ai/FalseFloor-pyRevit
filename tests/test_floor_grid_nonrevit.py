@@ -209,7 +209,7 @@ def test_get_stringer_clearance_max_and_default(monkeypatch):
             return families
 
     monkeypatch.setattr(mod, "FilteredElementCollector", _Collector)
-    monkeypatch.setattr(mod, "doc", _Doc(mapping))
+    monkeypatch.setattr(mod, "get_doc", lambda: _Doc(mapping))
 
     clearance_mm = mod._get_stringer_clearance_mm()
     assert abs(clearance_mm - (0.2 * mod._INTERNAL_TO_MM)) < 1e-6
@@ -229,9 +229,16 @@ def test_get_stringer_clearance_max_and_default(monkeypatch):
 def test_recreate_contour_on_top_rebuilds_lines(monkeypatch):
     mod = _import_floor_grid()
 
+    class _FakeCurve:
+        def __init__(self, cid):
+            self._cid = cid
+
+        def Clone(self):
+            return _FakeCurve(self._cid)
+
     class _CurveEl:
         def __init__(self, cid):
-            self.GeometryCurve = "curve{}".format(cid)
+            self.GeometryCurve = _FakeCurve(cid)
 
     class _Created:
         def __init__(self, cid):
@@ -261,7 +268,7 @@ def test_recreate_contour_on_top_rebuilds_lines(monkeypatch):
 
     captured = {}
     fake_doc = _Doc()
-    monkeypatch.setattr(mod, "doc", fake_doc)
+    monkeypatch.setattr(mod, "get_doc", lambda: fake_doc)
     monkeypatch.setattr(mod, "get_string_param", lambda *_a, **_k: "1;2")
     monkeypatch.setattr(mod, "parse_ids_from_string", lambda _s: [1, 2])
     monkeypatch.setattr(mod, "get_or_create_line_style", lambda *_a, **_k: "STYLE")
@@ -271,7 +278,12 @@ def test_recreate_contour_on_top_rebuilds_lines(monkeypatch):
         lambda _f, name, value: captured.update({name: value}) or True,
     )
 
-    count = mod._recreate_contour_on_top(object(), object(), update_style=True)
+    # Новая сигнатура: old_contour_ids и curves передаются явно
+    old_ids = [1, 2]
+    curves = [_FakeCurve(1), _FakeCurve(2)]
+    count = mod._recreate_contour_on_top(
+        object(), object(), old_ids, curves, update_style=True
+    )
     assert count == 2
     assert fake_doc.deleted == [1, 2]
     assert captured["RF_Contour_Lines_ID"] == "100;101"
@@ -332,7 +344,7 @@ def test_redraw_grid_for_floor_main_flow(monkeypatch):
     stored = {}
     fake_doc = _Doc()
 
-    monkeypatch.setattr(mod, "doc", fake_doc)
+    monkeypatch.setattr(mod, "get_doc", lambda: fake_doc)
     monkeypatch.setattr(mod.revit, "Transaction", _Tx)
     monkeypatch.setattr(mod, "get_double_param", lambda _f, name: params.get(name))
     monkeypatch.setattr(
@@ -364,6 +376,7 @@ def test_redraw_grid_for_floor_main_flow(monkeypatch):
         lambda _view, sid: {11: [4], 12: [7], 13: [8]}.get(sid, []),
     )
     monkeypatch.setattr(mod, "_build_clip_paths", lambda _f: (None, []))
+    monkeypatch.setattr(mod, "_collect_contour_curves", lambda _f: ([], []))
     monkeypatch.setattr(mod, "get_or_create_line_style", lambda *_a, **_k: "STYLE")
     monkeypatch.setattr(mod, "_recreate_contour_on_top", lambda *_a, **_k: 2)
     monkeypatch.setattr(
@@ -429,7 +442,7 @@ def test_redraw_grid_for_floor_with_holes_and_empty_marker(monkeypatch):
         "RF_Offset_Y": 0.0,
     }
     stored = {}
-    monkeypatch.setattr(mod, "doc", _Doc())
+    monkeypatch.setattr(mod, "get_doc", lambda: _Doc())
     monkeypatch.setattr(mod.revit, "Transaction", _Tx)
     monkeypatch.setattr(mod, "get_double_param", lambda _f, name: params.get(name))
     monkeypatch.setattr(
@@ -444,6 +457,7 @@ def test_redraw_grid_for_floor_with_holes_and_empty_marker(monkeypatch):
     monkeypatch.setattr(
         mod, "_clip_line_segments", lambda *_a, **_k: [((1, 0), (1, 10))]
     )
+    monkeypatch.setattr(mod, "_collect_contour_curves", lambda _f: ([], []))
     monkeypatch.setattr(mod, "_recreate_contour_on_top", lambda *_a, **_k: 0)
     monkeypatch.setattr(
         mod,

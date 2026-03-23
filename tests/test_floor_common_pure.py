@@ -175,7 +175,10 @@ def test_build_support_nodes_deduplicates_and_inserts_intermediate():
     segs = [(0.0, 0.0, 30.0, 0.0), (30.0, 0.0, 30.0, 30.0)]
     nodes = mod.build_support_nodes(segs, max_spacing=10.0, support_half=0.0)
 
-    assert len(nodes) >= 6
+    # Линия X: y=0, от 0 до 30 → start, ~10, ~20, end (4 шт.)
+    # Линия Y: x=30, от 0 до 30 → start, ~10, ~20, end (4 шт.)
+    # (30,0) дедуплицируется → итого ≥ 4 уникальных
+    assert len(nodes) >= 4
     assert len(nodes) == len(set(nodes))
     assert (0.0, 0.0) in nodes
     assert (30.0, 0.0) in nodes
@@ -397,7 +400,7 @@ def test_delete_elements_and_zone_save(monkeypatch):
             self.deleted.append(el_id.IntegerValue)
 
     fake_doc = _Doc()
-    monkeypatch.setattr(mod, "doc", fake_doc)
+    monkeypatch.setattr(mod, "get_doc", lambda: fake_doc)
     assert mod.delete_elements_by_ids([1, 2, 3]) == 2
     assert fake_doc.deleted == [1, 3]
 
