@@ -37,10 +37,11 @@ from floor_exact import internal_to_mm, mm_to_internal  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+doc = None
+uidoc = None
+view = None
 
 TITLE = tr("reinf_add_title")
 FAMILY_LONGERON = "RF_Stringer"
@@ -842,6 +843,15 @@ def _rect_mode_build(floor, upper_axis, lower_axis, upper_base_segs, lower_base_
 
 
 def main():
+    global doc, uidoc, view
+
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     floor = _pick_floor()
 
     with revit.Transaction("Нормализовать параметры усиления"):

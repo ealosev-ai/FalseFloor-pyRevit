@@ -18,9 +18,8 @@ from floor_common import (
     parse_ids_from_string,
     set_string_param,
 )
+from revit_context import get_doc  # type: ignore
 from pyrevit import revit  # type: ignore
-
-doc = revit.doc
 
 GRID_LINE_STYLE_NAME = "RF_Grid"
 GRID_COLOR = Color(100, 149, 237)  # васильковый синий
@@ -44,6 +43,10 @@ _DEFAULT_COL_CLEARANCE_MM = 30.0
 
 def _get_stringer_clearance_mm():
     """Читает макс. ширину профиля стрингера (мм) для near-edge подсветки."""
+    doc = get_doc()
+    if not doc:
+        return _DEFAULT_COL_CLEARANCE_MM
+
     clearance = 0.0
     for fam in FilteredElementCollector(doc).OfClass(Family):
         if fam.Name == "RF_Stringer":
@@ -90,6 +93,10 @@ def _build_clip_paths(floor):
     hole_edge_coords: list of (min_x, min_y, max_x, max_y) in internal units per hole,
     or empty list if no holes.
     """
+    doc = get_doc()
+    if not doc:
+        return None, []
+
     try:
         from floor_exact import (
             Difference,
@@ -177,6 +184,10 @@ def get_bbox_xy(el, active_view):
 
 def _collect_styled_curve_ids(view, style_id):
     """Собирает Id всех DetailCurve на виде с заданным стилем линии."""
+    doc = get_doc()
+    if not doc:
+        return []
+
     ids = []
     if not style_id:
         return ids
@@ -195,29 +206,45 @@ def _collect_styled_curve_ids(view, style_id):
     return ids
 
 
-def _recreate_contour_on_top(floor, view, update_style=False):
-    """Пересоздать контурные линии (удалить → создать), чтобы они были поверх сетки.
+def _collect_contour_curves(floor):
+    """Собрать клонированные кривые контура ДО транзакции.
 
-    Считывает геометрию кривых со старых элементов, удаляет их,
-    рисует заново с тем же стилем. Возвращает количество пересозданных.
+    Возвращает (old_ids, curves). Кривые клонированы, чтобы не зависеть
+    от состояния документа внутри транзакции.
     """
     old_contour_ids = parse_ids_from_string(
         get_string_param(floor, "RF_Contour_Lines_ID")
     )
     if not old_contour_ids:
-        return 0
+        return [], []
 
-    # Собрать кривые со старых элементов
     curves = []
+    doc = get_doc()
+    if not doc:
+        return old_contour_ids, curves
+
     for int_id in old_contour_ids:
         try:
             el = doc.GetElement(ElementId(int_id))
             if el and hasattr(el, "GeometryCurve"):
-                curves.append(el.GeometryCurve)
+                curves.append(el.GeometryCurve.Clone())
         except Exception:
             pass
 
+    return old_contour_ids, curves
+
+
+def _recreate_contour_on_top(floor, view, old_contour_ids, curves, update_style=False):
+    """Пересоздать контурные линии (удалить → создать), чтобы они были поверх сетки.
+
+    old_contour_ids и curves должны быть собраны _collect_contour_curves()
+    ДО начала транзакции, чтобы избежать ошибки "referenced object is not valid".
+    """
     if not curves:
+        return 0
+
+    doc = get_doc()
+    if not doc:
         return 0
 
     contour_style = get_or_create_line_style(
@@ -254,6 +281,10 @@ def _recreate_contour_on_top(floor, view, update_style=False):
 def redraw_grid_for_floor(
     floor, view, transaction_name, update_style=False, non_viable_cells=None
 ):
+    doc = get_doc()
+    if not doc:
+        raise Exception("Не удалось получить активный документ Revit.")
+
     step_x = get_double_param(floor, "RF_Step_X")
     step_y = get_double_param(floor, "RF_Step_Y")
     base_x_raw = get_double_param(floor, "RF_Base_X")
@@ -344,6 +375,11 @@ def redraw_grid_for_floor(
         seen_ids.add(int_id)
         ids_to_delete.append(int_id)
 
+    # Читаем всю геометрию ДО транзакции — внутри транзакции ссылки
+    # на геометрию элементов могут стать невалидными ("referenced object").
+    clip_paths, hole_edge_coords = _build_clip_paths(floor)
+    contour_old_ids, contour_curves = _collect_contour_curves(floor)
+
     deleted_count = 0
     created_ids = []
 
@@ -365,9 +401,6 @@ def redraw_grid_for_floor(
                     deleted_count += 1
             except Exception:
                 pass
-
-        # Подрезка по контуру через Clipper2 (если контур построен)
-        clip_paths, hole_edge_coords = _build_clip_paths(floor)
 
         # Стиль для линий у колонн (если есть колонны)
         near_col_style = None
@@ -518,7 +551,9 @@ def redraw_grid_for_floor(
                 raise Exception("Не удалось очистить RF_Base_Marker_ID")
 
         # Пересоздать контурные линии последними — чтобы они были поверх сетки
-        contour_recreated = _recreate_contour_on_top(floor, view, update_style)
+        contour_recreated = _recreate_contour_on_top(
+            floor, view, contour_old_ids, contour_curves, update_style
+        )
 
     return {
         "deleted_count": deleted_count,

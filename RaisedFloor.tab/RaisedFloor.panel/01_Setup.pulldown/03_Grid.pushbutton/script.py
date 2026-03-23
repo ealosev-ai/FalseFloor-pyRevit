@@ -7,14 +7,18 @@ from floor_common import FloorOrPartSelectionFilter, get_source_floor  # type: i
 from floor_grid import redraw_grid_for_floor  # type: ignore
 from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_GRID  # type: ignore
-from pyrevit import forms, revit  # type: ignore
-
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+from pyrevit import forms  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     # 1. Проверка вида
     if not isinstance(view, ViewPlan):
         forms.alert(

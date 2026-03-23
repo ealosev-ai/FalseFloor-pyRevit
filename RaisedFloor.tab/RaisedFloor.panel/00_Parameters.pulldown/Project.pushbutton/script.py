@@ -23,9 +23,10 @@ from floor_utils import (  # type: ignore
     get_storage_type_id,
 )
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_doc  # type: ignore
 
-doc = revit.doc
-app = doc.Application
+doc = None
+app = None
 TITLE = tr("proj_title")
 
 # ── Определения параметров ───────────────────────────────
@@ -156,6 +157,11 @@ _RF_PREFIX = "RF_"
 
 
 try:
+    doc = get_doc()
+    if not doc:
+        raise Exception(tr("proj_temp_file_failed"))
+    app = doc.Application
+
     existing = _get_existing_bindings(doc)
 
     # ── Определяем устаревшие RF_ parameters (есть в проекте, нет в PARAM_DEFS) ──

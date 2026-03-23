@@ -11,9 +11,10 @@ from Autodesk.Revit.DB import (  # type: ignore
 )
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_doc  # type: ignore
 
-doc = revit.doc
-app = doc.Application
+doc = None
+app = None
 TITLE = tr("clean_title")
 CONFIRM_PHRASE = tr("clean_confirm_phrase")
 
@@ -127,6 +128,11 @@ def _clean_project():
 
 # ── Основной блок ────────────────────────────────────────
 try:
+    doc = get_doc()
+    if not doc:
+        raise Exception(tr("clean_no_rf_project"))
+    app = doc.Application
+
     if doc.IsFamilyDocument:
         _clean_family()
     else:

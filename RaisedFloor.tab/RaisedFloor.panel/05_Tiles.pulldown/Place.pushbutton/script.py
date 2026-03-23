@@ -35,10 +35,11 @@ from floor_exact import (  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+doc = None
+uidoc = None
+view = None
 
 TITLE = tr("title_tiles")
 FAMILY_NAME = "RF_Tile"
@@ -189,6 +190,13 @@ def _resolve_level_for_placement(floor, active_view, z_ref):
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
         raise _Cancel()

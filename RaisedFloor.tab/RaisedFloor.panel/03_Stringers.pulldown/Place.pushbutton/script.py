@@ -50,12 +50,13 @@ from floor_exact import (  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 # ─── Константы ────────────────────────────────────────────
 
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+doc = None
+uidoc = None
+view = None
 
 TITLE = tr("title_longerons")
 FAMILY_NAME = "RF_Stringer"
@@ -480,6 +481,15 @@ def _place_layer(segs, symbol, level, z0, dz, prefix, dir_label, max_len):
 
 
 def main():
+    global doc, uidoc, view
+
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     floor = _pick_floor()
 
     with revit.Transaction(tr("tx_normalize_longeron_sizes")):
@@ -531,7 +541,7 @@ def main():
     bbox = get_bbox_xy(floor, view)
     if not bbox or len(bbox) < 6:
         raise Exception("get_bbox_xy: неожиданный формат")
-    z0 = bbox[5]
+    z0 = bbox[5]  # абсолютная Z верха плиты (для Line-based семейств)
 
     lid = floor.LevelId
     level = (
@@ -559,21 +569,17 @@ def main():
         )
         raise _Cancel()
 
+    support_h = total_h - tile_t - ph_upper - ph_lower
+    if support_h < -TOL:
+        forms.alert(
+            tr("height_conflict_full"),
+            title=TITLE,
+        )
+        raise _Cancel()
+    support_h = max(0.0, support_h)
     slab_off = z0 - level.Elevation
-    if (ph_upper + ph_lower) > 0:
-        support_h = total_h - tile_t - ph_upper - ph_lower
-        if support_h < -TOL:
-            forms.alert(
-                tr("height_conflict_full"),
-                title=TITLE,
-            )
-            raise _Cancel()
-        support_h = max(0.0, support_h)
-        dz_upper = slab_off + support_h + ph_lower
-        dz_lower = slab_off + support_h
-    else:
-        dz_upper = slab_off
-        dz_lower = slab_off
+    dz_upper = slab_off + support_h + ph_lower
+    dz_lower = slab_off + support_h
 
     # ── Позиции нижних (регулярный шаг от первой perp-линии) ──
     if dir_x:
@@ -731,6 +737,7 @@ def main():
     lp_odd = stg["lp_odd"]
     mk_mids_even = stg["mk_mids_even"]
     mk_mids_odd = stg["mk_mids_odd"]
+    mk_mids = sorted(mk_mids_even + mk_mids_odd)
     _stagger_odd_upper = stg["stagger_odd_upper"]
     _stagger_odd_lower = stg["stagger_odd_lower"]
 
@@ -761,14 +768,15 @@ def main():
         p for seg in contour_lower_hole for p in _cut_seg(seg, max_len, mk_mids)
     ]
 
-    # ── 5a. Отсев hole-контурных, дублирующих осевые (только нижние) ──
-    #   Нижние: если осевой проходит параллельно контурному вокруг дыры ближе
-    #   чем pw + 5 мм — контурный бессмыслен (невозможно поставить 2 опоры рядом).
-    #   Верхние hole-контурные НЕ трогаем: плитка опирается на верхние,
-    #   и ей всегда нужны минимум 2 параллельные опоры.
+    # ── 5a. Отсев hole-контурных нижних, дублирующих осевые ──
+    #   Нижний hole-контурный можно убрать, только если рядом есть осевой
+    #   И нет верхнего hole-контурного, которому нужна опора.
     near_tol = max(pw_lower, pw_upper) + mm_to_internal(MOUNTING_GAP_MM)
     contour_lower_hole, near_l = drop_near_parallel(
-        contour_lower_hole, lower_segs, near_tol
+        contour_lower_hole,
+        lower_segs,
+        near_tol,
+        protect_segs=contour_upper_hole,
     )
     near_u = 0
 
@@ -795,11 +803,14 @@ def main():
         tr("long_lower_count", count=len(lower_segs), positions=len(lower_positions)),
         tr("long_lower_step", step=internal_to_mm(lower_step)),
         tr("long_max_length", length=internal_to_mm(max_len)),
+        tr("long_support_h", height=internal_to_mm(support_h)),
         tr("long_gap", gap=MOUNTING_GAP_MM),
         "",
         tr("long_z0", z=internal_to_mm(z0)),
         tr("long_dz", upper=internal_to_mm(dz_upper), lower=internal_to_mm(dz_lower)),
     ]
+    if support_h <= TOL:
+        msg.append(tr("long_support_height_zero"))
     if total_h == 0:
         msg.append("!!! RF_Floor_Height = 0")
     if contour_error:

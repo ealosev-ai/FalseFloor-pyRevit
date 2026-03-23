@@ -14,9 +14,10 @@ from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_doc, get_uidoc  # type: ignore
 
-doc = revit.doc
-uidoc = revit.uidoc
+doc = None
+uidoc = None
 TITLE = tr("vent_title")
 FAMILY_NAME = "RF_Tile"
 
@@ -89,6 +90,12 @@ def _find_standard_type(family):
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     # --- Выбор плиток ---
     sel_ids = uidoc.Selection.GetElementIds()
     tiles = []

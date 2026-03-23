@@ -25,9 +25,10 @@ from floor_utils import (  # type: ignore
     safe_get_name,
 )
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_doc  # type: ignore
 
-doc = revit.doc
-app = doc.Application
+doc = None
+app = None
 TITLE = tr("fam_title")
 
 # ── Все параметры (имя, StorageType, описание, is_instance) ──
@@ -550,6 +551,11 @@ def _run_in_project():
 
 # ── Основной блок ────────────────────────────────────────
 try:
+    doc = get_doc()
+    if not doc:
+        raise Exception("No active document")
+    app = doc.Application
+
     _ensure_sp_file()
     # Создаём определения в ФОП через Revit API
     _get_or_create_definitions()

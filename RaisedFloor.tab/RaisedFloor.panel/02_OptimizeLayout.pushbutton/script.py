@@ -23,10 +23,7 @@ from floor_ui import (  # type: ignore
     get_shift_quality_status,
 )
 from pyrevit import forms, revit  # type: ignore
-
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 
 class _Cancel(Exception):
@@ -34,6 +31,13 @@ class _Cancel(Exception):
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     if not isinstance(view, ViewPlan):
         forms.alert(
             tr("open_plan_shift"),

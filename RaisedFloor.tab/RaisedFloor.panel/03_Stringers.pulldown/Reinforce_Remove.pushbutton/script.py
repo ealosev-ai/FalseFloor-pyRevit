@@ -12,10 +12,7 @@ from floor_common import (  # type: ignore
 )
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
-
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 TITLE = tr("reinf_del_title")
 PARAM_ZONES = "RF_Reinf_Zones_JSON"
@@ -26,6 +23,13 @@ class _Cancel(Exception):
 
 
 def _pick_floor():
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
         raise _Cancel()
@@ -65,6 +69,10 @@ def _zone_label(zone):
 
 
 def main():
+    doc = get_doc()
+    if not doc:
+        raise Exception(tr("source_floor_not_found"))
+
     floor = _pick_floor()
 
     p_zone = floor.LookupParameter(PARAM_ZONES)

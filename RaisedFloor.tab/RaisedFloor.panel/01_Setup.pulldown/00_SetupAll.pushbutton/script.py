@@ -3,6 +3,7 @@
 from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
     Color,
+    ElementId,
     Options,
     PlanarFace,
     Solid,
@@ -23,16 +24,12 @@ from floor_common import (  # type: ignore
 )
 from floor_grid import redraw_grid_for_floor  # type: ignore
 from floor_i18n import tr  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
 TITLE_PREPARE_ALL = tr("prepare_all_title")
 CONTOUR_STYLE_NAME = "RF_Contour"
 CONTOUR_COLOR = Color(0, 255, 0)
-
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
-
 
 def mm_to_internal(mm_value):
     return float(mm_value) / 304.8
@@ -56,10 +53,13 @@ def ask_mm_value(title, prompt, default_value):
 
 
 def get_top_face_and_loops(floor):
+    view = get_active_view()
     opt = Options()
     opt.ComputeReferences = True
-    opt.DetailLevel = view.DetailLevel
+    if view:
+        opt.DetailLevel = view.DetailLevel
 
+    doc = get_doc()
     geom = floor.get_Geometry(opt)
     if not geom:
         return None, None
@@ -91,10 +91,47 @@ def get_top_face_and_loops(floor):
         return best_face, None
 
 
-def rebuild_contour_for_floor(floor):
+def _resolve_floor(floor_id_int):
+    doc = get_doc()
+    if not doc:
+        raise Exception(tr("source_floor_not_found"))
+
+    floor = None
+    try:
+        floor = doc.GetElement(ElementId(int(floor_id_int)))
+    except Exception:
+        floor = None
+
+    if not floor:
+        raise Exception(tr("source_floor_not_found"))
+
+    try:
+        is_valid = bool(floor.IsValidObject)
+    except Exception:
+        is_valid = False
+    if not is_valid:
+        raise Exception(tr("source_floor_not_found"))
+
+    return floor
+
+
+def rebuild_contour_for_floor(floor_id_int):
+    view = get_active_view()
+    if not isinstance(view, ViewPlan):
+        raise Exception(tr("prepare_all_open_plan"))
+
+    floor = _resolve_floor(floor_id_int)
     face, edge_loops = get_top_face_and_loops(floor)
     if not face or not edge_loops:
         raise Exception(tr("contour_face_not_found"))
+
+    # Клонируем кривые ДО транзакции — внутри транзакции ссылки на
+    # геометрию элемента могут стать невалидными.
+    curves = []
+    for loop in edge_loops:
+        for curve in loop:
+            curves.append(curve.Clone())
+    loop_count = edge_loops.Count if edge_loops else 0
 
     old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
     ids_to_delete = old_ids
@@ -111,26 +148,37 @@ def rebuild_contour_for_floor(floor):
 
         deleted_count = delete_elements_by_ids(ids_to_delete)
 
-        for loop in edge_loops:
-            for curve in loop:
-                try:
-                    detail_curve = doc.Create.NewDetailCurve(view, curve)
-                    detail_curve.LineStyle = contour_style
-                    created_ids.append(str(get_id_value(detail_curve.Id)))
-                except Exception:
-                    pass
+        for crv in curves:
+            try:
+                detail_curve = doc.Create.NewDetailCurve(view, crv)
+                detail_curve.LineStyle = contour_style
+                created_ids.append(str(get_id_value(detail_curve.Id)))
+            except Exception:
+                pass
 
-        if not set_string_param(floor, "RF_Contour_Lines_ID", ";".join(created_ids)):
+        floor_for_write = _resolve_floor(floor_id_int)
+        if not set_string_param(
+            floor_for_write,
+            "RF_Contour_Lines_ID",
+            ";".join(created_ids),
+        ):
             raise Exception(tr("contour_write_failed"))
 
     return {
         "deleted_count": deleted_count,
         "created_count": len(created_ids),
-        "loop_count": edge_loops.Count if edge_loops else 0,
+        "loop_count": loop_count,
     }
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     if not isinstance(view, ViewPlan):
         forms.alert(
             tr("prepare_all_open_plan"),
@@ -155,6 +203,8 @@ try:
         forms.alert(tr("element_not_floor"), title=TITLE_PREPARE_ALL)
         raise Exception("Element is not a floor")
 
+    floor_id_int = get_id_value(floor.Id)
+
     base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))
 
     step_x_mm = ask_mm_value(TITLE_PREPARE_ALL, tr("prompt_step_x"), 600)
@@ -175,6 +225,7 @@ try:
 
     missing_params = []
     with revit.Transaction(tr("tx_prepare_floor")):
+        floor_for_write = _resolve_floor(floor_id_int)
         pairs = [
             ("RF_Step_X", mm_to_internal(step_x_mm)),
             ("RF_Step_Y", mm_to_internal(step_y_mm)),
@@ -187,9 +238,13 @@ try:
             ("RF_Tile_Thickness", mm_to_internal(tile_thickness_mm)),
         ]
         for name, val in pairs:
-            if not set_double_param(floor, name, val):
+            if not set_double_param(floor_for_write, name, val):
                 missing_params.append(name)
-        if not set_string_param(floor, "RF_Gen_Status", tr("status_prepared")):
+        if not set_string_param(
+            floor_for_write,
+            "RF_Gen_Status",
+            tr("status_prepared"),
+        ):
             missing_params.append("RF_Gen_Status")
 
     if missing_params:
@@ -197,9 +252,10 @@ try:
             tr("prepare_all_write_failed", missing="\n- ".join(missing_params))
         )
 
-    contour_result = rebuild_contour_for_floor(floor)
+    contour_result = rebuild_contour_for_floor(floor_id_int)
+    floor_for_grid = _resolve_floor(floor_id_int)
     grid_result = redraw_grid_for_floor(
-        floor,
+        floor_for_grid,
         view,
         tr("tx_redraw_grid"),
         update_style=True,
@@ -208,7 +264,7 @@ try:
     forms.alert(
         tr(
             "prepare_all_done",
-            floor_id=get_id_value(floor.Id),
+            floor_id=floor_id_int,
             step_x=step_x_mm,
             step_y=step_y_mm,
             height=height_mm,

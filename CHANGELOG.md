@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-03-23 (v1.4.2)
+
+### Fixed
+
+- Eliminated stale Revit document and active view references after project/document changes by introducing a live context adapter in `lib/revit_context.py`.
+- `Prepare all` and related commands now resolve `doc`, `uidoc`, and `ActiveView` at runtime instead of caching pyRevit context at module import time.
+- Removed the need to rely on `Reload pyRevit` as a workaround after creating a new project before running setup and layout commands.
+
+### Changed
+
+- Refactored shared runtime modules (`lib/floor_common.py`, `lib/floor_grid.py`) to consume the live Revit context helper.
+- Updated parameter, setup, layout, stringer, support, tile, and clear commands to use the same runtime context access pattern.
+
+---
 ## 2026-03-21 (v1.4.1)
 
 ### Changed

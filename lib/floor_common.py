@@ -15,9 +15,7 @@ from Autodesk.Revit.DB import (  # type: ignore
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter  # type: ignore
 from floor_i18n import tr  # type: ignore
-from pyrevit import revit  # type: ignore
-
-doc = revit.doc
+from revit_context import get_doc  # type: ignore
 
 REINFORCEMENT_ZONES_PARAM = "RF_Reinf_Zones_JSON"
 
@@ -116,6 +114,9 @@ def get_source_floor(el, visited_ids=None):
 
     if isinstance(el, Part):
         try:
+            doc = get_doc()
+            if not doc:
+                return None
             source_ids = el.GetSourceElementIds()
             for sid in source_ids:
                 host_id = sid.HostElementId
@@ -399,6 +400,10 @@ def parse_ids_from_string(ids_string):
 
 def delete_elements_by_ids(ids_list):
     """Удаляет элементы по списку int id. Возвращает количество удалённых."""
+    doc = get_doc()
+    if not doc:
+        return 0
+
     deleted = 0
     for int_id in ids_list:
         try:

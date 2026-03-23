@@ -13,9 +13,7 @@ from floor_common import (  # type: ignore
 from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_PREPARE  # type: ignore
 from pyrevit import forms, revit  # type: ignore
-
-doc = revit.doc
-uidoc = revit.uidoc
+from revit_context import get_doc, get_uidoc  # type: ignore
 
 
 def mm_to_internal(mm_value):
@@ -40,6 +38,12 @@ def ask_mm_value(title, prompt, default_value):
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     # 1. Выбор перекрытия
     pick_filter = FloorOrPartSelectionFilter()
     ref = uidoc.Selection.PickObject(

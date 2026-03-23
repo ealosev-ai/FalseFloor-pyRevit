@@ -21,10 +21,11 @@ from floor_common import (  # type: ignore
 from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_CONTOUR  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+doc = None
+uidoc = None
+view = None
 
 CONTOUR_STYLE_NAME = "RF_Contour"
 CONTOUR_COLOR = Color(0, 255, 0)  # ярко-зелёный
@@ -68,6 +69,13 @@ def get_top_face_and_loops(floor):
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     if not isinstance(view, ViewPlan):
         forms.alert(
             tr("open_plan_contour"),
@@ -101,6 +109,12 @@ try:
         )
         raise Exception("Top face or loops not found")
 
+    # Клонируем кривые ДО транзакции — внутри ссылки геометрии невалидны
+    curves = []
+    for loop in edge_loops:
+        for curve in loop:
+            curves.append(curve.Clone())
+
     # ID для удаления: только линии текущего перекрытия
     old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
     ids_to_delete = old_ids
@@ -119,14 +133,13 @@ try:
 
         deleted_count = delete_elements_by_ids(ids_to_delete)
 
-        for loop in edge_loops:
-            for curve in loop:
-                try:
-                    dc = doc.Create.NewDetailCurve(view, curve)
-                    dc.LineStyle = contour_style
-                    created_ids.append(str(dc.Id.Value))
-                except Exception:
-                    pass
+        for crv in curves:
+            try:
+                dc = doc.Create.NewDetailCurve(view, crv)
+                dc.LineStyle = contour_style
+                created_ids.append(str(dc.Id.Value))
+            except Exception:
+                pass
 
         ids_string = ";".join(created_ids)
         ok = set_string_param(floor, "RF_Contour_Lines_ID", ids_string)

@@ -40,15 +40,16 @@ from floor_exact import (  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
-doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
+doc = None
+uidoc = None
+view = None
 
 TITLE = tr("title_supports")
 FAMILY_SUPPORT = "RF_Support"
 COORD_TOL = 1e-6
-DEFAULT_MAX_SPACING_MM = 1000.0  # макс. шаг между стойками вдоль лонжерона
+DEFAULT_MIN_SPACING_MM = 1000.0  # мин. шаг между стойками (не чаще чем)
 
 
 class _Cancel(Exception):
@@ -154,17 +155,27 @@ def _get_lower_axis_and_angle(lower_segs):
     return "X", 0.0
 
 
-def _generate_support_nodes(lower_segs, max_spacing, support_half=0.0):
+def _generate_support_nodes(
+    lower_segs, max_spacing, support_half=0.0, grid_positions=None
+):
     """Генерация узлов стоек вдоль нижних лонжеронов (shared logic)."""
     return build_support_nodes(
         lower_segs,
         max_spacing,
         support_half=support_half,
         tol=COORD_TOL,
+        grid_positions=grid_positions,
     )
 
 
 try:
+    doc = get_doc()
+    uidoc = get_uidoc()
+    view = get_active_view()
+
+    if not doc or not uidoc:
+        raise Exception(tr("source_floor_not_found"))
+
     if not isinstance(view, ViewPlan):
         forms.alert(tr("open_plan"), title=TITLE)
         raise _Cancel()
@@ -211,16 +222,16 @@ try:
             raise _Cancel()
         sym_support = sup_dict[chosen_sup]
 
-    # Спросить макс. шаг стоек
+    # Спросить мин. шаг стоек
     s_spacing = forms.ask_for_string(
         prompt=tr("prompt_support_spacing"),
-        default=str(int(DEFAULT_MAX_SPACING_MM)),
+        default=str(int(DEFAULT_MIN_SPACING_MM)),
         title=TITLE,
     )
     if not s_spacing:
         raise _Cancel()
     try:
-        max_spacing = mm_to_internal(float(s_spacing.strip()))
+        min_spacing = mm_to_internal(float(s_spacing.strip()))
     except ValueError:
         forms.alert(tr("invalid_number"), title=TITLE)
         raise _Cancel()
@@ -275,7 +286,7 @@ try:
     if tile_t <= COORD_TOL:
         tile_t = _get_tile_thickness_fallback()
 
-    if total_h > 0 and (profile_h_upper + profile_h_lower) > 0:
+    if total_h > 0:
         support_h = total_h - tile_t - profile_h_upper - profile_h_lower
         if support_h < -COORD_TOL:
             forms.alert(
@@ -299,7 +310,14 @@ try:
     # Генерация узлов стоек
     base_size = get_double_param(sym_support, "RF_Base_Size") or 0.0
     support_half = base_size / 2.0
-    support_nodes = _generate_support_nodes(lower_segs, max_spacing, support_half)
+    # Перпендикулярные линии сетки для выравнивания стоек в ряд
+    if lower_axis == "X":
+        grid_pos = v_keys  # вертикальные линии перпендикулярны стрингерам по X
+    else:
+        grid_pos = h_keys  # горизонтальные линии перпендикулярны стрингерам по Y
+    support_nodes = _generate_support_nodes(
+        lower_segs, min_spacing, support_half, grid_positions=grid_pos
+    )
 
     # Индексы колонка/ряд для стоек
     def _nearest_idx(keys, val):
@@ -335,7 +353,7 @@ try:
         tr("supports_count", count=len(support_nodes)),
         tr("supports_lower_count", count=len(lower_segs)),
         tr("supports_axis", axis=lower_axis),
-        tr("supports_max_spacing", spacing=internal_to_mm(max_spacing)),
+        tr("supports_min_spacing", spacing=internal_to_mm(min_spacing)),
     ]
     if base_size > 0:
         msg.append(tr("supports_base", size=internal_to_mm(base_size)))
