@@ -12,6 +12,7 @@ from floor_common import (  # type: ignore
     set_string_param,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
@@ -23,9 +24,9 @@ class _Cancel(Exception):
 
 
 _PARAM_MAP = [
-    ("RF_Grid_Lines_ID", "label_grid_lines"),
-    ("RF_Base_Marker_ID", "label_base_marker"),
-    ("RF_Contour_Lines_ID", "label_contour_lines"),
+    (P.GRID_LINES_ID, "label_grid_lines"),
+    (P.BASE_MARKER_ID, "label_base_marker"),
+    (P.CONTOUR_LINES_ID, "label_contour_lines"),
 ]
 
 try:

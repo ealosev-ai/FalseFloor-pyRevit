@@ -50,6 +50,18 @@ from floor_exact import (  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_config import (  # type: ignore
+    DEFAULT_BOTTOM_STEP_MM,
+    DEFAULT_MAX_STRINGER_LENGTH_MM,
+    GEOM_TOL,
+    MIN_SEGMENT_LENGTH_FT,
+    MOUNTING_GAP_MM,
+)
+from rf_param_schema import (  # type: ignore
+    RFFamilies,
+    RF_STRINGER_REQUIRED_FLOOR_PARAMS,
+    RFParams as P,
+)
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 # ─── Константы ────────────────────────────────────────────
@@ -59,19 +71,11 @@ uidoc = None
 view = None
 
 TITLE = tr("title_longerons")
-FAMILY_NAME = "RF_Stringer"
-TOL = 1e-6
-_MIN_PIECE = 0.005  # ~1.5 мм
-MOUNTING_GAP_MM = 5.0  # монтажный зазор от границ
+FAMILY_NAME = RFFamilies.STRINGER
+TOL = GEOM_TOL
+_MIN_PIECE = MIN_SEGMENT_LENGTH_FT  # ~1.5 мм
 
-REQUIRED_FLOOR_PARAMS = [
-    "RF_Stringers_Top_ID",
-    "RF_Stringers_Bottom_ID",
-    "RF_Bottom_Mode",
-    "RF_Bottom_Step",
-    "RF_Max_Stringer_Len",
-    "RF_Top_Direction",
-]
+REQUIRED_FLOOR_PARAMS = RF_STRINGER_REQUIRED_FLOOR_PARAMS
 
 
 class _Cancel(Exception):
@@ -114,11 +118,11 @@ def _get_tile_thickness_fallback():
     """Возвращает толщину плитки (ft) из семейства RF_Tile как fallback."""
     thickness = 0.0
     for fam in FilteredElementCollector(doc).OfClass(Family):
-        if fam.Name == "RF_Tile":
+        if fam.Name == RFFamilies.TILE:
             for sid in fam.GetFamilySymbolIds():
                 sym = doc.GetElement(sid)
                 if sym:
-                    t = get_double_param(sym, "RF_Thickness") or 0.0
+                    t = get_double_param(sym, P.THICKNESS) or 0.0
                     if t > thickness:
                         thickness = t
             break
@@ -158,7 +162,7 @@ def _dedup(segs):
 
 def _read_grid_lines(floor_el):
     """→ v_lines {x: [(y_min,y_max)]}, h_lines {y: [(x_min,x_max)]}."""
-    ids = parse_ids_from_string(get_string_param(floor_el, "RF_Grid_Lines_ID"))
+    ids = parse_ids_from_string(get_string_param(floor_el, P.GRID_LINES_ID))
     v_lines, h_lines = {}, {}
     for int_id in ids:
         el = doc.GetElement(ElementId(int_id))
@@ -419,7 +423,9 @@ def _ask_config(floor):
             raise _Cancel()
         sym_lower = sym_dict[n]
 
-    max_len_default = int(round(get_mm_param(floor, "RF_Max_Stringer_Len", 4000.0)))
+    max_len_default = int(
+        round(get_mm_param(floor, P.MAX_STRINGER_LEN, DEFAULT_MAX_STRINGER_LENGTH_MM))
+    )
     s = forms.ask_for_string(
         prompt=tr("prompt_max_length"),
         default=str(max_len_default),
@@ -433,7 +439,9 @@ def _ask_config(floor):
         forms.alert(tr("invalid_number"), title=TITLE)
         raise _Cancel()
 
-    lower_step_default = int(round(get_mm_param(floor, "RF_Bottom_Step", 1200.0)))
+    lower_step_default = int(
+        round(get_mm_param(floor, P.BOTTOM_STEP, DEFAULT_BOTTOM_STEP_MM))
+    )
     s = forms.ask_for_string(
         prompt=tr("prompt_lower_step"),
         default=str(lower_step_default),
@@ -470,9 +478,9 @@ def _place_layer(segs, symbol, level, z0, dz, prefix, dir_label, max_len):
         mark = "{}.{}.{}мм".format(prefix, i, l_mm)
         if l_mm > max_mm:
             mark += " [!ДЛИНА]"
-        _set_param(inst, "RF_Stringer_Type", "Upper" if prefix == "ВЛ" else "Lower")
-        _set_param(inst, "RF_Direction_Axis", dir_label)
-        _set_param(inst, "RF_Mark", mark)
+        _set_param(inst, P.STRINGER_TYPE, "Upper" if prefix == "ВЛ" else "Lower")
+        _set_param(inst, P.DIRECTION_AXIS, dir_label)
+        _set_param(inst, P.MARK, mark)
         ids.append(str(_eid_int(inst.Id)))
     return ids
 
@@ -493,8 +501,8 @@ def main():
     floor = _pick_floor()
 
     with revit.Transaction(tr("tx_normalize_longeron_sizes")):
-        normalize_legacy_mm_param(floor, "RF_Bottom_Step")
-        normalize_legacy_mm_param(floor, "RF_Max_Stringer_Len")
+        normalize_legacy_mm_param(floor, P.BOTTOM_STEP)
+        normalize_legacy_mm_param(floor, P.MAX_STRINGER_LEN)
 
     missing = [n for n in REQUIRED_FLOOR_PARAMS if floor.LookupParameter(n) is None]
     if missing:
@@ -515,23 +523,23 @@ def main():
         perp_keys = h_keys
 
     # ── Профили ──
-    pw_upper = get_double_param(sym_upper, "RF_Profile_Width") or 0.0
-    pw_lower = get_double_param(sym_lower, "RF_Profile_Width") or 0.0
+    pw_upper = get_double_param(sym_upper, P.PROFILE_WIDTH) or 0.0
+    pw_lower = get_double_param(sym_lower, P.PROFILE_WIDTH) or 0.0
     pw = max(pw_upper, pw_lower)
     pw_upper_mm = internal_to_mm(pw_upper)
     pw_lower_mm = internal_to_mm(pw_lower)
-    ph_upper = get_double_param(sym_upper, "RF_Profile_Height") or 0.0
-    ph_lower = get_double_param(sym_lower, "RF_Profile_Height") or 0.0
+    ph_upper = get_double_param(sym_upper, P.PROFILE_HEIGHT) or 0.0
+    ph_lower = get_double_param(sym_lower, P.PROFILE_HEIGHT) or 0.0
 
     # ── Стойка: полуразмер (max из опоры и оголовка) ──
     support_half_mm = 0.0
     for fam in FilteredElementCollector(doc).OfClass(Family):
-        if fam.Name == "RF_Support":
+        if fam.Name == RFFamilies.SUPPORT:
             for sid in fam.GetFamilySymbolIds():
                 sym = doc.GetElement(sid)
                 if sym:
-                    head = get_double_param(sym, "RF_Head_Size") or 0.0
-                    base = get_double_param(sym, "RF_Base_Size") or 0.0
+                    head = get_double_param(sym, P.HEAD_SIZE) or 0.0
+                    base = get_double_param(sym, P.BASE_SIZE) or 0.0
                     half = internal_to_mm(max(head, base)) / 2.0
                     if half > support_half_mm:
                         support_half_mm = half
@@ -550,8 +558,8 @@ def main():
         else view.GenLevel
     )
 
-    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
-    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
+    total_h = get_double_param(floor, P.FLOOR_HEIGHT) or 0.0
+    tile_t = get_double_param(floor, P.TILE_THICKNESS) or 0.0
     if tile_t <= TOL:
         tile_t = _get_tile_thickness_fallback()
 
@@ -788,8 +796,8 @@ def main():
         raise _Cancel()
 
     # ── Подтверждение ──
-    old_upper = parse_ids_from_string(get_string_param(floor, "RF_Stringers_Top_ID"))
-    old_lower = parse_ids_from_string(get_string_param(floor, "RF_Stringers_Bottom_ID"))
+    old_upper = parse_ids_from_string(get_string_param(floor, P.STRINGERS_TOP_ID))
+    old_lower = parse_ids_from_string(get_string_param(floor, P.STRINGERS_BOTTOM_ID))
     old_ids = list(set(old_upper + old_lower))
 
     msg = [
@@ -863,12 +871,12 @@ def main():
             max_len,
         )
 
-        set_string_param(floor, "RF_Stringers_Top_ID", ";".join(upper_ids))
-        set_string_param(floor, "RF_Stringers_Bottom_ID", ";".join(lower_ids))
-        _set_param(floor, "RF_Bottom_Mode", "Регулярные")
-        set_mm_param(floor, "RF_Bottom_Step", internal_to_mm(lower_step))
-        set_mm_param(floor, "RF_Max_Stringer_Len", internal_to_mm(max_len))
-        _set_param(floor, "RF_Top_Direction", "X" if dir_x else "Y")
+        set_string_param(floor, P.STRINGERS_TOP_ID, ";".join(upper_ids))
+        set_string_param(floor, P.STRINGERS_BOTTOM_ID, ";".join(lower_ids))
+        _set_param(floor, P.BOTTOM_MODE, "Регулярные")
+        set_mm_param(floor, P.BOTTOM_STEP, internal_to_mm(lower_step))
+        set_mm_param(floor, P.MAX_STRINGER_LEN, internal_to_mm(max_len))
+        _set_param(floor, P.TOP_DIRECTION, "X" if dir_x else "Y")
 
     forms.alert(
         tr("long_done", upper=len(upper_ids), lower=len(lower_ids), deleted=deleted),

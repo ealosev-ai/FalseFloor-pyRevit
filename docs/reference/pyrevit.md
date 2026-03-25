@@ -62,6 +62,23 @@
 - Local references:
   `docs/DEVELOPER_GUIDE.md`
   `run_tests.py`
+- Current project pattern:
+  long-running maintenance and smoke flows should prefer `lib/rf_reporting.py`,
+  which wraps `script.get_output()` and `script.get_logger()` behind one reporter object
+
+## Reporting Pattern In This Repo
+
+- For short user interactions:
+  `forms.alert(...)`
+- For longer maintenance or diagnostic flows:
+  `lib/rf_reporting.py`
+- That helper currently writes to:
+  `pyRevit output`
+  `script.get_logger()`
+  temporary text log file
+- Good local examples:
+  `lib/revit_smoke.py`
+  `RaisedFloor.tab/RaisedFloor.panel/00_Parameters.pulldown/MigrateGUIDs.pushbutton/script.py`
 
 ## Transactions in Practice
 
@@ -113,3 +130,5 @@
 - Primary Context7 sources:
   `/pyrevitlabs/pyrevit`
   `/llmstxt/pyrevitlabs_io_llms-full_txt`
+
+

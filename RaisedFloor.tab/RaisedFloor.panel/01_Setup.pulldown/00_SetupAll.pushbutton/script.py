@@ -24,6 +24,7 @@ from floor_common import (  # type: ignore
 )
 from floor_grid import redraw_grid_for_floor  # type: ignore
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 
@@ -133,7 +134,7 @@ def rebuild_contour_for_floor(floor_id_int):
             curves.append(curve.Clone())
     loop_count = edge_loops.Count if edge_loops else 0
 
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
+    old_ids = parse_ids_from_string(get_string_param(floor, P.CONTOUR_LINES_ID))
     ids_to_delete = old_ids
 
     created_ids = []
@@ -159,7 +160,7 @@ def rebuild_contour_for_floor(floor_id_int):
         floor_for_write = _resolve_floor(floor_id_int)
         if not set_string_param(
             floor_for_write,
-            "RF_Contour_Lines_ID",
+            P.CONTOUR_LINES_ID,
             ";".join(created_ids),
         ):
             raise Exception(tr("contour_write_failed"))
@@ -227,25 +228,25 @@ try:
     with revit.Transaction(tr("tx_prepare_floor")):
         floor_for_write = _resolve_floor(floor_id_int)
         pairs = [
-            ("RF_Step_X", mm_to_internal(step_x_mm)),
-            ("RF_Step_Y", mm_to_internal(step_y_mm)),
-            ("RF_Offset_X", 0.0),
-            ("RF_Offset_Y", 0.0),
-            ("RF_Base_X", base_point.X),
-            ("RF_Base_Y", base_point.Y),
-            ("RF_Base_Z", base_point.Z),
-            ("RF_Floor_Height", mm_to_internal(height_mm)),
-            ("RF_Tile_Thickness", mm_to_internal(tile_thickness_mm)),
+            (P.STEP_X, mm_to_internal(step_x_mm)),
+            (P.STEP_Y, mm_to_internal(step_y_mm)),
+            (P.OFFSET_X, 0.0),
+            (P.OFFSET_Y, 0.0),
+            (P.BASE_X, base_point.X),
+            (P.BASE_Y, base_point.Y),
+            (P.BASE_Z, base_point.Z),
+            (P.FLOOR_HEIGHT, mm_to_internal(height_mm)),
+            (P.TILE_THICKNESS, mm_to_internal(tile_thickness_mm)),
         ]
         for name, val in pairs:
             if not set_double_param(floor_for_write, name, val):
                 missing_params.append(name)
         if not set_string_param(
             floor_for_write,
-            "RF_Gen_Status",
+            P.GEN_STATUS,
             tr("status_prepared"),
         ):
-            missing_params.append("RF_Gen_Status")
+            missing_params.append(P.GEN_STATUS)
 
     if missing_params:
         raise Exception(

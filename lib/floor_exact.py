@@ -12,12 +12,33 @@ from floor_common import (
     parse_ids_from_string,
     read_floor_grid_params,
 )
+from rf_config import (  # type: ignore
+    AREA_EQUAL_TOL_MM2,
+    BBOX_TOL_MM,
+    CLIPPER_SCALE,
+    CUT_ROUND_MM,
+    DEFAULT_ACCEPTABLE_CUT_MM,
+    DEFAULT_COARSE_SHIFT_STEP_MM,
+    DEFAULT_MICRO_FRAGMENT_CUT_MM,
+    DEFAULT_REFINE_RADIUS_MM,
+    DEFAULT_REFINE_SHIFT_STEP_MM,
+    DEFAULT_REFINE_TOP_N,
+    DEFAULT_TOP_N,
+    DEFAULT_UNACCEPTABLE_CUT_MM,
+    DEFAULT_UNWANTED_CUT_MM,
+    EDGE_TOL_MM,
+    GEOM_TOL,
+    MIN_FRAGMENT_AREA_MM2,
+    ROUND_MM_DIGITS,
+    SCAN_EPS_MM,
+    SCAN_HIT_TOL_MM,
+    SCAN_SAMPLES,
+)
+from rf_param_schema import RFParams as P  # type: ignore
 
-TOL = 1e-6  # допуск сравнения floating-point (internal units ≈ 0.0003 мм)
-SCALE = 1000.0  # мм → Clipper2 int64 (1 мм = 1000 единиц, точность 0.001 мм)
-ROUND_MM = 1  # знаков после запятой при округлении мм
-AREA_EQUAL_TOL_MM2 = 0.1  # допуск сравнения площадей (мм²)
-MIN_FRAGMENT_AREA_MM2 = 100.0  # площадь микро-фрагмента (< 10×10 мм)
+TOL = GEOM_TOL  # допуск сравнения floating-point (internal units ≈ 0.0003 мм)
+SCALE = CLIPPER_SCALE  # мм → Clipper2 int64 (1 мм = 1000 единиц, точность 0.001 мм)
+ROUND_MM = ROUND_MM_DIGITS  # знаков после запятой при округлении мм
 
 # 4-уровневые пороги подрезок (по реальным спецификациям производителей)
 # < 50 мм       : micro_fragment — геометрический мусор, считается немонтируемым (non_viable)
@@ -25,29 +46,14 @@ MIN_FRAGMENT_AREA_MM2 = 100.0  # площадь микро-фрагмента (<
 # 100–150 мм    : нежелательно (монтаж с оговорками по поддержке)
 # 150–200 мм    : допустимо (Bergvik: avoid < 200mm, но разрешено)
 # >= 200 мм     : хорошо (целевой минимум)
-DEFAULT_MICRO_FRAGMENT_CUT_MM = 50.0
-DEFAULT_UNACCEPTABLE_CUT_MM = 100.0
-DEFAULT_UNWANTED_CUT_MM = 150.0
-DEFAULT_ACCEPTABLE_CUT_MM = 200.0
-
-DEFAULT_COARSE_SHIFT_STEP_MM = 50.0  # грубый шаг поиска (фаза 1)
-DEFAULT_REFINE_SHIFT_STEP_MM = 10.0  # точный шаг уточнения (фаза 2)
-DEFAULT_REFINE_RADIUS_MM = 60.0  # радиус уточнения вокруг лучших (фаза 2)
-DEFAULT_REFINE_TOP_N = 5  # сколько лучших из фазы 1 уточнять
-DEFAULT_TOP_N = 10  # сколько лучших вариантов возвращать
-
 # Целевая кратность подрезок по краям (мм).
 # При равных основных метриках предпочитается вариант,
 # размеры подрезок которого ближе к кратным CUT_ROUND_MM.
-CUT_ROUND_MM = 10.0
-
 # Сканирование min-width для сложных подрезок (ray-casting эвристика)
-_SCAN_SAMPLES = 40  # равномерных лучей по каждой оси
-_SCAN_EPS = 0.05  # мм — сдвиг луча от вершин (чтобы не попасть точно на ребро)
-_SCAN_HIT_TOL = 1e-4  # мм — склейка совпавших пересечений (дедупликация)
-_BBOX_TOL_MM = (
-    1.0  # мм — допуск для быстрой bbox-проверки (Clipper round-trip погрешность)
-)
+_SCAN_SAMPLES = SCAN_SAMPLES  # равномерных лучей по каждой оси
+_SCAN_EPS = SCAN_EPS_MM  # мм — сдвиг луча от вершин (чтобы не попасть точно на ребро)
+_SCAN_HIT_TOL = SCAN_HIT_TOL_MM  # мм — склейка совпавших пересечений (дедупликация)
+_BBOX_TOL_MM = BBOX_TOL_MM  # мм — допуск для быстрой bbox-проверки
 
 
 def _get_extension_root():
@@ -424,11 +430,13 @@ def bbox_intersects(a, b, tol=_BBOX_TOL_MM):
 
 
 def get_exact_zone_for_floor(doc, floor):
-    contour_ids_string = get_string_param(floor, "RF_Contour_Lines_ID")
+    contour_ids_string = get_string_param(floor, P.CONTOUR_LINES_ID)
     contour_ids = parse_ids_from_string(contour_ids_string)
     if not contour_ids:
         raise Exception(
-            "На перекрытии нет RF_Contour_Lines_ID. Сначала запусти 'Контур'."
+            "На перекрытии нет {}. Сначала запусти 'Контур'.".format(
+                P.CONTOUR_LINES_ID
+            )
         )
 
     contour_elements = []
@@ -717,7 +725,7 @@ def analyze_cell_exact(
 def _point_in_polygon_mm(px, py, polygon_pts):
     """Point-in-polygon test с проверкой точки на ребре (мм координаты)."""
     n = len(polygon_pts)
-    edge_tol = 0.05  # мм — допуск для попадания на ребро
+    edge_tol = EDGE_TOL_MM  # мм — допуск для попадания на ребро
     inside = False
     j = n - 1
     for i in range(n):
@@ -1666,7 +1674,7 @@ def _cut_round_deltas(
     step_x_mm = internal_to_mm(step_x)
     step_y_mm = internal_to_mm(step_y)
 
-    tol = 0.05  # мм — порог «уже кратно»
+    tol = EDGE_TOL_MM  # мм — порог «уже кратно»
 
     def _deltas_for_edge(edge_mm, step_mm, base_mm):
         cut = (base_mm - edge_mm) % step_mm

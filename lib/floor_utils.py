@@ -161,6 +161,75 @@ def get_existing_parameter_bindings(
     return existing
 
 
+def _get_definition_group_id(definition):
+    # type: (Any) -> Any
+    """Get the parameter group id from a definition, version-agnostic."""
+    try:
+        return definition.GetGroupTypeId()
+    except Exception:
+        pass
+    try:
+        return definition.ParameterGroup
+    except Exception:
+        pass
+    return None
+
+
+def get_full_parameter_binding_info(
+    doc,  # type: Document
+):
+    # type: (...) -> Dict[str, Dict[str, Any]]
+    """Collect full parameter binding info for all bound parameters.
+
+    Returns a dict keyed by parameter name with values containing:
+      - definition: the InternalDefinition
+      - binding: the InstanceBinding or TypeBinding object
+      - is_instance: True if InstanceBinding, False if TypeBinding
+      - categories: list of BuiltInCategory values from the binding
+      - group_id: ForgeTypeId or BuiltInParameterGroup (or None)
+    """
+    from Autodesk.Revit.DB import InstanceBinding  # type: ignore
+
+    result = {}  # type: Dict[str, Dict[str, Any]]
+    binding_map = doc.ParameterBindings
+    iterator = binding_map.ForwardIterator()
+    iterator.Reset()
+
+    while iterator.MoveNext():
+        definition = iterator.Key
+        if not definition or not definition.Name:
+            continue
+        binding = iterator.Current
+        if not binding:
+            continue
+
+        is_instance = isinstance(binding, InstanceBinding)
+
+        categories = []  # type: List[Any]
+        try:
+            cat_set = binding.Categories
+            if cat_set:
+                for cat in cat_set:
+                    try:
+                        categories.append(cat.BuiltInCategory)
+                    except Exception:
+                        categories.append(cat)
+        except Exception:
+            pass
+
+        group_id = _get_definition_group_id(definition)
+
+        result[definition.Name] = {
+            "definition": definition,
+            "binding": binding,
+            "is_instance": is_instance,
+            "categories": categories,
+            "group_id": group_id,
+        }
+
+    return result
+
+
 def safe_get_name(obj: Any) -> Optional[str]:
     """Safely get the Name property from a Revit object.
 

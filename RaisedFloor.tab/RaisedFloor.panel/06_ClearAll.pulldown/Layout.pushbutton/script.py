@@ -13,6 +13,7 @@ from floor_common import (  # type: ignore
     set_string_param,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
@@ -25,13 +26,13 @@ class _Cancel(Exception):
 
 # Только элементы раскладки — без сетки и контура
 _PARAM_MAP = [
-    ("RF_Supports_ID", "label_supports"),
-    ("RF_Stringers_Top_ID", "label_longerons_upper"),
-    ("RF_Stringers_Bottom_ID", "label_longerons_lower"),
-    ("RF_Tiles_ID", "label_tiles"),
+    (P.SUPPORTS_ID, "label_supports"),
+    (P.STRINGERS_TOP_ID, "label_longerons_upper"),
+    (P.STRINGERS_BOTTOM_ID, "label_longerons_lower"),
+    (P.TILES_ID, "label_tiles"),
 ]
 
-_PARAM_ZONES = "RF_Reinf_Zones_JSON"
+_PARAM_ZONES = P.REINF_ZONES_JSON
 try:
     doc = get_doc()
     uidoc = get_uidoc()

@@ -15,13 +15,14 @@ from Autodesk.Revit.DB import (  # type: ignore
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter  # type: ignore
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from revit_context import get_doc  # type: ignore
 
-REINFORCEMENT_ZONES_PARAM = "RF_Reinf_Zones_JSON"
+REINFORCEMENT_ZONES_PARAM = P.REINF_ZONES_JSON
 
 _LEGACY_MM_LENGTH_PARAM_LIMITS = {
-    "RF_Bottom_Step": 10000.0,
-    "RF_Max_Stringer_Len": 20000.0,
+    P.BOTTOM_STEP: 10000.0,
+    P.MAX_STRINGER_LEN: 20000.0,
 }
 
 
@@ -144,21 +145,24 @@ def get_source_floor(el, visited_ids=None):
 
 def read_floor_grid_params(floor):
     params = {
-        "RF_Step_X": get_double_param(floor, "RF_Step_X"),
-        "RF_Step_Y": get_double_param(floor, "RF_Step_Y"),
-        "RF_Base_X": get_double_param(floor, "RF_Base_X"),
-        "RF_Base_Y": get_double_param(floor, "RF_Base_Y"),
+        P.STEP_X: get_double_param(floor, P.STEP_X),
+        P.STEP_Y: get_double_param(floor, P.STEP_Y),
+        P.BASE_X: get_double_param(floor, P.BASE_X),
+        P.BASE_Y: get_double_param(floor, P.BASE_Y),
     }
 
     missing = [name for name, val in params.items() if val is None]
     if missing:
         raise Exception(tr("params_read_error", missing="\n- ".join(missing)))
 
+    if params[P.STEP_X] <= 0 or params[P.STEP_Y] <= 0:
+        raise Exception(tr("step_positive"))
+
     return {
-        "step_x": params["RF_Step_X"],
-        "step_y": params["RF_Step_Y"],
-        "base_x_raw": params["RF_Base_X"],
-        "base_y_raw": params["RF_Base_Y"],
+        "step_x": params[P.STEP_X],
+        "step_y": params[P.STEP_Y],
+        "base_x_raw": params[P.BASE_X],
+        "base_y_raw": params[P.BASE_Y],
     }
 
 
@@ -214,12 +218,18 @@ def set_string_param(el, name, value):
     p = el.LookupParameter(name)
     if not p:
         return False
-    if p.IsReadOnly:
+    try:
+        if p.IsReadOnly:
+            return False
+        if p.StorageType != StorageType.String:
+            return False
+    except Exception:
         return False
-    if p.StorageType != StorageType.String:
+    try:
+        p.Set(value)
+        return True
+    except Exception:
         return False
-    p.Set(value)
-    return True
 
 
 def get_mm_param(el, name, default_mm=None):

@@ -6,23 +6,26 @@
 Параметры создаются с описаниями для понятности.
 """
 
-import os
-
 from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
-    ExternalDefinitionCreationOptions,
     InstanceBinding,
     StorageType,
     TypeBinding,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import (  # type: ignore
+    RFParams as P,
+    collect_project_parameter_guid_mismatches,
+    ensure_schema_definitions,
+)
+from rf_project_migration import migrate_project_parameter_guids  # type: ignore
 from floor_utils import (  # type: ignore
     create_category_set,
     get_data_group_type_id,
     get_existing_parameter_bindings,
     get_storage_type_id,
 )
-from pyrevit import forms, revit  # type: ignore
+from pyrevit import forms, revit, script  # type: ignore
 from revit_context import get_doc  # type: ignore
 
 doc = None
@@ -36,101 +39,65 @@ _CATS_FLOORS = [BuiltInCategory.OST_Floors]
 
 PARAM_DEFS = [
     # ── Параметры перекрытия (instance) ──
-    ("RF_Step_X", StorageType.Double, "Шаг сетки по X (ft)", _CATS_FLOORS, True),
-    ("RF_Step_Y", StorageType.Double, "Шаг сетки по Y (ft)", _CATS_FLOORS, True),
-    ("RF_Base_X", StorageType.Double, "Базовая точка X (ft)", _CATS_FLOORS, True),
-    ("RF_Base_Y", StorageType.Double, "Базовая точка Y (ft)", _CATS_FLOORS, True),
-    ("RF_Base_Z", StorageType.Double, "Базовая точка Z (ft)", _CATS_FLOORS, True),
+    (P.STEP_X, StorageType.Double, "Шаг сетки по X (ft)", _CATS_FLOORS, True),
+    (P.STEP_Y, StorageType.Double, "Шаг сетки по Y (ft)", _CATS_FLOORS, True),
+    (P.BASE_X, StorageType.Double, "Базовая точка X (ft)", _CATS_FLOORS, True),
+    (P.BASE_Y, StorageType.Double, "Базовая точка Y (ft)", _CATS_FLOORS, True),
+    (P.BASE_Z, StorageType.Double, "Базовая точка Z (ft)", _CATS_FLOORS, True),
+    (P.OFFSET_X, StorageType.Double, "Оптимальное смещение X (ft)", _CATS_FLOORS, True),
+    (P.OFFSET_Y, StorageType.Double, "Оптимальное смещение Y (ft)", _CATS_FLOORS, True),
     (
-        "RF_Offset_X",
-        StorageType.Double,
-        "Оптимальное смещение X (ft)",
-        _CATS_FLOORS,
-        True,
-    ),
-    (
-        "RF_Offset_Y",
-        StorageType.Double,
-        "Оптимальное смещение Y (ft)",
-        _CATS_FLOORS,
-        True,
-    ),
-    (
-        "RF_Floor_Height",
+        P.FLOOR_HEIGHT,
         StorageType.Double,
         "Полная высота фальшпола (ft)",
         _CATS_FLOORS,
         True,
     ),
+    (P.TILE_THICKNESS, StorageType.Double, "Толщина плитки (ft)", _CATS_FLOORS, True),
+    (P.GEN_STATUS, StorageType.String, "Статус генерации", _CATS_FLOORS, True),
+    (P.CONTOUR_LINES_ID, StorageType.String, "ID линий контура (;)", _CATS_FLOORS, True),
+    (P.GRID_LINES_ID, StorageType.String, "ID линий сетки (;)", _CATS_FLOORS, True),
+    (P.BASE_MARKER_ID, StorageType.String, "ID маркера базы", _CATS_FLOORS, True),
+    (P.TILES_ID, StorageType.String, "ID размещённых плиток (;)", _CATS_FLOORS, True),
     (
-        "RF_Tile_Thickness",
-        StorageType.Double,
-        "Толщина плитки (ft)",
-        _CATS_FLOORS,
-        True,
-    ),
-    ("RF_Gen_Status", StorageType.String, "Статус генерации", _CATS_FLOORS, True),
-    (
-        "RF_Contour_Lines_ID",
-        StorageType.String,
-        "ID линий контура (;)",
-        _CATS_FLOORS,
-        True,
-    ),
-    ("RF_Grid_Lines_ID", StorageType.String, "ID линий сетки (;)", _CATS_FLOORS, True),
-    ("RF_Base_Marker_ID", StorageType.String, "ID маркера базы", _CATS_FLOORS, True),
-    (
-        "RF_Tiles_ID",
-        StorageType.String,
-        "ID размещённых плиток (;)",
-        _CATS_FLOORS,
-        True,
-    ),
-    (
-        "RF_Stringers_Top_ID",
+        P.STRINGERS_TOP_ID,
         StorageType.String,
         "ID верхних лонжеронов (;)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "RF_Stringers_Bottom_ID",
+        P.STRINGERS_BOTTOM_ID,
         StorageType.String,
         "ID нижних лонжеронов (;)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "RF_Reinf_Zones_JSON",
+        P.REINF_ZONES_JSON,
         StorageType.String,
         "JSON зон усиления лонжеронов",
         _CATS_FLOORS,
         True,
     ),
-    ("RF_Supports_ID", StorageType.String, "ID стоек (;)", _CATS_FLOORS, True),
+    (P.SUPPORTS_ID, StorageType.String, "ID стоек (;)", _CATS_FLOORS, True),
+    (P.BOTTOM_MODE, StorageType.String, "Режим размещения нижних", _CATS_FLOORS, True),
     (
-        "RF_Bottom_Mode",
-        StorageType.String,
-        "Режим размещения нижних",
-        _CATS_FLOORS,
-        True,
-    ),
-    (
-        "RF_Bottom_Step",
+        P.BOTTOM_STEP,
         StorageType.String,
         "Шаг нижних лонжеронов (мм)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "RF_Max_Stringer_Len",
+        P.MAX_STRINGER_LEN,
         StorageType.String,
         "Макс. длина лонжерона (мм)",
         _CATS_FLOORS,
         True,
     ),
     (
-        "RF_Top_Direction",
+        P.TOP_DIRECTION,
         StorageType.String,
         "Направление верхних (X/Y)",
         _CATS_FLOORS,
@@ -156,6 +123,60 @@ _ACTUAL_PARAM_NAMES = set(name for name, _, _, _, _ in PARAM_DEFS)
 _RF_PREFIX = "RF_"
 
 
+def _offer_guid_migration(mismatches, doc, app):
+    """Offer to migrate project parameter GUIDs instead of blocking."""
+    lines = [
+        "Обнаружены RF_ параметры проекта с неканоническими GUID ({} шт.).".format(
+            len(mismatches)
+        ),
+        "",
+        "ВНИМАНИЕ: миграция GUID может сломать:",
+        "  - Спецификации (schedules), ссылающиеся на эти параметры",
+        "  - Фильтры видов (view filters)",
+        "  - Теги (tags)",
+        "",
+        "Рекомендуется делать только на копии проекта.",
+        "",
+        "Мигрировать GUID?",
+    ]
+    confirm = forms.alert("\n".join(lines), title=TITLE, yes=True, no=True)
+    if not confirm:
+        raise Exception("cancel")
+
+    result = migrate_project_parameter_guids(doc, app)
+
+    output = script.get_output()
+    output.set_title("RF Project GUID Migration")
+
+    if result["migrated"]:
+        output.print_md("### Migrated: {}".format(len(result["migrated"])))
+        for name, old_g, new_g in result["migrated"]:
+            output.print_md("- **{}**: `{}` → `{}`".format(name, old_g, new_g))
+
+    if result["skipped"]:
+        output.print_md("### Skipped: {}".format(len(result["skipped"])))
+        for name, reason in result["skipped"]:
+            output.print_md("- **{}**: {}".format(name, reason))
+
+    if result["values_backed_up"] or result["values_restored"]:
+        output.print_md(
+            "### Values: backed up {}, restored {}, failed {}".format(
+                result["values_backed_up"],
+                result["values_restored"],
+                result["values_failed"],
+            )
+        )
+
+    if result["errors"]:
+        output.print_md("### Errors")
+        for e in result["errors"]:
+            output.print_md("- {}".format(e))
+        raise Exception("cancel")
+
+    if not result["migrated"] and not result["errors"]:
+        output.print_md("No parameters needed migration.")
+
+
 try:
     doc = get_doc()
     if not doc:
@@ -163,6 +184,15 @@ try:
     app = doc.Application
 
     existing = _get_existing_bindings(doc)
+    guid_mismatches = collect_project_parameter_guid_mismatches(
+        doc,
+        allowed_names=_ACTUAL_PARAM_NAMES,
+        bound_names=existing.keys(),
+    )
+    if guid_mismatches:
+        _offer_guid_migration(guid_mismatches, doc, app)
+        # Refresh bindings — migration changed definitions and GUIDs
+        existing = _get_existing_bindings(doc)
 
     # ── Определяем устаревшие RF_ parameters (есть в проекте, нет в PARAM_DEFS) ──
     obsolete = []
@@ -257,76 +287,46 @@ try:
                     if defn:
                         bm.Remove(defn)
 
-        # ── Шаг 2: создать определения во ВРЕМЕННОМ файле ──
-        # Revit кеширует DefinitionFile — старые определения (NUMBER)
-        # остаются в памяти даже после правки текста. Единственный
-        # способ получить чистые определения с LENGTH — создать их
-        # в новом файле, который Revit ещё не кешировал.
-        original_sp_path = app.SharedParametersFilename or ""
-        temp_path = os.path.join(
-            os.environ.get("TEMP", os.path.expanduser("~")),
-            "RF_TempParams_{}.txt".format(os.getpid()),
-        )
-        try:
-            # Записать минимальный заголовок
-            with open(temp_path, "w") as f:
-                f.write("# This is a Revit shared parameter file.\n")
-                f.write("# Do not edit manually.\n")
-                f.write("*META\tVERSION\tMINVERSION\n")
-                f.write("META\t2\t1\n")
-                f.write("*GROUP\tID\tNAME\n")
-                f.write(
-                    "*PARAM\tGUID\tNAME\tDATATYPE\tDATACATEGORY\tGROUP\tVISIBLE\tDESCRIPTION\tUSERMODIFIABLE\n"
-                )
+        definition_specs = []
+        for name, st, desc, cats, is_instance in needed:
+            param_type = _storage_to_param_type(st)
+            if param_type is None:
+                raise Exception("Unsupported parameter type for '{}'".format(name))
+            definition_specs.append(
+                {
+                    "name": name,
+                    "description": desc,
+                    "param_type": param_type,
+                }
+            )
 
-            app.SharedParametersFilename = temp_path
-            tmp_sp_file = app.OpenSharedParameterFile()
-            if not tmp_sp_file:
-                raise Exception(tr("proj_temp_file_failed"))
+        definitions_by_name = ensure_schema_definitions(app, definition_specs)
 
-            GROUP_NAME = "RaisedFloor"
-            dg = tmp_sp_file.Groups.Create(GROUP_NAME)
+        added = []
+        errors = []
+        data_group_id = _get_data_group_id()
 
-            added = []
-            errors = []
-            data_group_id = _get_data_group_id()
+        with revit.Transaction("Add RF_ parameters"):
+            for name, st, desc, cats, is_instance in needed:
+                try:
+                    defn = definitions_by_name[name]
+                    cat_set = _make_cat_set(doc, cats)
 
-            with revit.Transaction("Add RF_ parameters"):
-                for name, st, desc, cats, is_instance in needed:
-                    try:
-                        param_type = _storage_to_param_type(st)
-                        opts = ExternalDefinitionCreationOptions(name, param_type)
-                        opts.Description = desc
-                        defn = dg.Definitions.Create(opts)
+                    if is_instance:
+                        binding = InstanceBinding(cat_set)
+                    else:
+                        binding = TypeBinding(cat_set)
 
-                        cat_set = _make_cat_set(doc, cats)
-
-                        if is_instance:
-                            binding = InstanceBinding(cat_set)
-                        else:
-                            binding = TypeBinding(cat_set)
-
-                        if data_group_id is not None:
-                            ok = doc.ParameterBindings.Insert(
-                                defn, binding, data_group_id
-                            )
-                        else:
-                            ok = doc.ParameterBindings.Insert(defn, binding)
-                        if ok:
-                            added.append(name)
-                        else:
-                            errors.append("{}: Insert failed".format(name))
-                    except Exception as ex:
-                        errors.append("{}: {}".format(name, str(ex)))
-
-        finally:
-            # Восстановить оригинальный файл (даже если был пустой)
-            app.SharedParametersFilename = original_sp_path
-            # Удалить временный файл
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+                    if data_group_id is not None:
+                        ok = doc.ParameterBindings.Insert(defn, binding, data_group_id)
+                    else:
+                        ok = doc.ParameterBindings.Insert(defn, binding)
+                    if ok:
+                        added.append(name)
+                    else:
+                        errors.append("{}: Insert failed".format(name))
+                except Exception as ex:
+                    errors.append("{}: {}".format(name, str(ex)))
 
         report = []
         if wrong_type:

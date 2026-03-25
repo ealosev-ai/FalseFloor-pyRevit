@@ -494,7 +494,7 @@ ls lib/Clipper2Lib.dll
 
 ### Логирование
 
-Для отладки используйте:
+Для простых случаев можно использовать обычный logger:
 
 ```python
 from pyrevit import script
@@ -503,6 +503,39 @@ logger.debug("Debug message")
 logger.info("Info message")
 logger.error("Error message")
 ```
+
+Для новых долгих, многошаговых или diagnostic-heavy команд используйте общий helper
+`lib/rf_reporting.py`:
+
+```python
+from rf_reporting import ScriptReporter
+
+reporter = ScriptReporter.from_pyrevit(
+    title="Моя команда",
+    log_stem="my_command",
+)
+reporter.stage("Старт")
+reporter.write("Собираю элементы")
+reporter.write("Подозрительный кейс", level="warn")
+reporter.write("Ошибка записи параметра", level="error")
+```
+
+Что это даёт:
+
+1. Одна и та же строка уходит в `pyRevit output`
+2. Та же строка попадает в `script.get_logger()`
+3. Пишется временный текстовый `.log` файл для разбора инцидентов
+
+Когда использовать `ScriptReporter`:
+
+1. GUID migration и maintenance-команды
+2. smoke/diagnostic runner-ы
+3. операции в несколько фаз, где важно понимать, на каком шаге всё сломалось
+
+Когда он не нужен:
+
+1. короткая кнопка с одним действием
+2. сценарий, где достаточно одного `forms.alert(...)`
 
 ### Отчёт об ошибках
 
@@ -544,3 +577,4 @@ logger.error("Error message")
 ## 📄 Лицензия
 
 MIT License — см. файл [LICENSE](LICENSE).
+

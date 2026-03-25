@@ -10,21 +10,29 @@
   RF_Support               → параметры стойки
 """
 
-import os
-
 from Autodesk.Revit.DB import (  # type: ignore
-    ExternalDefinitionCreationOptions,
     Family,
+    FamilySource,
     FilteredElementCollector,
+    IFamilyLoadOptions,
     StorageType,
     Transaction,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import (  # type: ignore
+    RF_ALL_FAMILY_PARAM_NAMES,
+    RF_STRINGER_FAMILY_PARAM_NAMES,
+    RF_SUPPORT_FAMILY_PARAM_NAMES,
+    RF_TILE_FAMILY_PARAM_NAMES,
+    RFParams as P,
+    collect_family_parameter_guid_mismatches,
+    ensure_schema_definitions,
+)
+from rf_family_migration import migrate_family_doc  # type: ignore
 from floor_utils import (  # type: ignore
     get_storage_type_id,
-    safe_get_name,
 )
-from pyrevit import forms  # type: ignore
+from pyrevit import forms, script  # type: ignore
 from revit_context import get_doc  # type: ignore
 
 doc = None
@@ -34,124 +42,69 @@ TITLE = tr("fam_title")
 # ── Все параметры (имя, StorageType, описание, is_instance) ──
 FAMILY_PARAMS = [
     # Instance
-    ("RF_Column", StorageType.Integer, "Колонка в сетке", True),
-    ("RF_Row", StorageType.Integer, "Ряд в сетке", True),
-    ("RF_Mark", StorageType.String, "Марка элемента ФП", True),
-    ("RF_Tile_Type", StorageType.String, "Тип плитки (Полная/Подрезка/Сложная)", True),
-    (
-        "RF_Tile_Size_X",
-        StorageType.Double,
-        "Базовый размер плитки X = шаг сетки (ft)",
-        True,
-    ),
-    (
-        "RF_Tile_Size_Y",
-        StorageType.Double,
-        "Базовый размер плитки Y = шаг сетки (ft)",
-        True,
-    ),
-    ("RF_Cut_X", StorageType.Double, "Размер подрезки X (ft)", True),
-    ("RF_Cut_Y", StorageType.Double, "Размер подрезки Y (ft)", True),
-    ("RF_Void1_X", StorageType.Double, "Вырез ширина", True),
-    ("RF_Void1_Y", StorageType.Double, "Вырез высота", True),
-    (
-        "RF_Void1_OX",
-        StorageType.Double,
-        "Отступ выреза от левого края плитки",
-        True,
-    ),
-    (
-        "RF_Void1_OY",
-        StorageType.Double,
-        "Отступ выреза от нижнего края плитки",
-        True,
-    ),
-    ("RF_Void2_X", StorageType.Double, "Вырез 2 ширина", True),
-    ("RF_Void2_Y", StorageType.Double, "Вырез 2 высота", True),
-    (
-        "RF_Void2_OX",
-        StorageType.Double,
-        "Отступ выреза 2 от левого края плитки",
-        True,
-    ),
-    (
-        "RF_Void2_OY",
-        StorageType.Double,
-        "Отступ выреза 2 от нижнего края плитки",
-        True,
-    ),
-    ("RF_Void3_X", StorageType.Double, "Вырез 3 ширина", True),
-    ("RF_Void3_Y", StorageType.Double, "Вырез 3 высота", True),
-    (
-        "RF_Void3_OX",
-        StorageType.Double,
-        "Отступ выреза 3 от левого края плитки",
-        True,
-    ),
-    (
-        "RF_Void3_OY",
-        StorageType.Double,
-        "Отступ выреза 3 от нижнего края плитки",
-        True,
-    ),
-    ("RF_Stringer_Type", StorageType.String, "Тип стрингера (Верхний/Нижний)", True),
-    ("RF_Direction_Axis", StorageType.String, "Ось направления (X/Y)", True),
-    ("RF_Support_Height", StorageType.Double, "Высота стойки (ft)", True),
-    ("RF_Ventilated", StorageType.Integer, "Вентилируемая плитка (0/1)", True),
+    (P.COLUMN, StorageType.Integer, "Колонка в сетке", True),
+    (P.ROW, StorageType.Integer, "Ряд в сетке", True),
+    (P.MARK, StorageType.String, "Марка элемента ФП", True),
+    (P.TILE_TYPE, StorageType.String, "Тип плитки (Полная/Подрезка/Сложная)", True),
+    (P.TILE_SIZE_X, StorageType.Double, "Базовый размер плитки X = шаг сетки (ft)", True),
+    (P.TILE_SIZE_Y, StorageType.Double, "Базовый размер плитки Y = шаг сетки (ft)", True),
+    (P.CUT_X, StorageType.Double, "Размер подрезки X (ft)", True),
+    (P.CUT_Y, StorageType.Double, "Размер подрезки Y (ft)", True),
+    (P.VOID1_X, StorageType.Double, "Вырез ширина", True),
+    (P.VOID1_Y, StorageType.Double, "Вырез высота", True),
+    (P.VOID1_OX, StorageType.Double, "Отступ выреза от левого края плитки", True),
+    (P.VOID1_OY, StorageType.Double, "Отступ выреза от нижнего края плитки", True),
+    (P.VOID2_X, StorageType.Double, "Вырез 2 ширина", True),
+    (P.VOID2_Y, StorageType.Double, "Вырез 2 высота", True),
+    (P.VOID2_OX, StorageType.Double, "Отступ выреза 2 от левого края плитки", True),
+    (P.VOID2_OY, StorageType.Double, "Отступ выреза 2 от нижнего края плитки", True),
+    (P.VOID3_X, StorageType.Double, "Вырез 3 ширина", True),
+    (P.VOID3_Y, StorageType.Double, "Вырез 3 высота", True),
+    (P.VOID3_OX, StorageType.Double, "Отступ выреза 3 от левого края плитки", True),
+    (P.VOID3_OY, StorageType.Double, "Отступ выреза 3 от нижнего края плитки", True),
+    (P.STRINGER_TYPE, StorageType.String, "Тип стрингера (Верхний/Нижний)", True),
+    (P.DIRECTION_AXIS, StorageType.String, "Ось направления (X/Y)", True),
+    (P.SUPPORT_HEIGHT, StorageType.Double, "Высота стойки (ft)", True),
+    (P.VENTILATED, StorageType.Integer, "Вентилируемая плитка (0/1)", True),
     # Type
-    ("RF_Profile_Height", StorageType.Double, "Высота профиля (ft)", False),
-    ("RF_Profile_Width", StorageType.Double, "Ширина профиля (ft)", False),
-    ("RF_Thickness", StorageType.Double, "Толщина элемента (ft)", False),
-    ("RF_Wall_Thickness", StorageType.Double, "Толщина стенки профиля (ft)", False),
-    ("RF_Base_Size", StorageType.Double, "Размер опорной площадки (ft)", False),
-    ("RF_Head_Size", StorageType.Double, "Размер оголовка стойки (ft)", False),
+    (P.PROFILE_HEIGHT, StorageType.Double, "Высота профиля (ft)", False),
+    (P.PROFILE_WIDTH, StorageType.Double, "Ширина профиля (ft)", False),
+    (P.THICKNESS, StorageType.Double, "Толщина элемента (ft)", False),
+    (P.WALL_THICKNESS, StorageType.Double, "Толщина стенки профиля (ft)", False),
+    (P.BASE_SIZE, StorageType.Double, "Размер опорной площадки (ft)", False),
+    (P.HEAD_SIZE, StorageType.Double, "Размер оголовка стойки (ft)", False),
 ]
 
 # ── Какие параметры нужны каждому типу семейства ──
-_TILE_PARAMS = {
-    "RF_Column",
-    "RF_Row",
-    "RF_Mark",
-    "RF_Tile_Type",
-    "RF_Tile_Size_X",
-    "RF_Tile_Size_Y",
-    "RF_Cut_X",
-    "RF_Cut_Y",
-    "RF_Void1_X",
-    "RF_Void1_Y",
-    "RF_Void1_OX",
-    "RF_Void1_OY",
-    "RF_Void2_X",
-    "RF_Void2_Y",
-    "RF_Void2_OX",
-    "RF_Void2_OY",
-    "RF_Void3_X",
-    "RF_Void3_Y",
-    "RF_Void3_OX",
-    "RF_Void3_OY",
-    "RF_Thickness",
-    "RF_Ventilated",
-}
-_LONGERON_PARAMS = {
-    "RF_Mark",
-    "RF_Stringer_Type",
-    "RF_Direction_Axis",
-    "RF_Profile_Height",
-    "RF_Profile_Width",
-    "RF_Wall_Thickness",
-}
-_SUPPORT_PARAMS = {
-    "RF_Column",
-    "RF_Row",
-    "RF_Mark",
-    "RF_Support_Height",
-    "RF_Base_Size",
-    "RF_Head_Size",
-}
-_ALL_PARAM_NAMES = set(p[0] for p in FAMILY_PARAMS)
+_TILE_PARAMS = set(RF_TILE_FAMILY_PARAM_NAMES)
+_LONGERON_PARAMS = set(RF_STRINGER_FAMILY_PARAM_NAMES)
+_SUPPORT_PARAMS = set(RF_SUPPORT_FAMILY_PARAM_NAMES)
+_ALL_PARAM_NAMES = set(RF_ALL_FAMILY_PARAM_NAMES)
 
 # Префикс, по которому определяем «наши» параметры
 _RF_PREFIX = "RF_"
+
+
+class _ReloadFamilyLoadOptions(IFamilyLoadOptions):
+    """Reload edited family back into the source project without disk save."""
+
+    def OnFamilyFound(self, familyInUse, overwriteParameterValues):
+        overwriteParameterValues.Value = True
+        return True
+
+    def OnSharedFamilyFound(
+        self, sharedFamily, familyInUse, source, overwriteParameterValues
+    ):
+        source.Value = FamilySource.Family
+        overwriteParameterValues.Value = True
+        return True
+
+
+def _format_guid_mismatch_lines(mismatches):
+    lines = []
+    for name, actual_guid, expected_guid in mismatches:
+        lines.append("  {}: {} != {}".format(name, actual_guid, expected_guid))
+    return lines
 
 
 def _get_params_for_family(family_name):
@@ -168,98 +121,27 @@ def _get_params_for_family(family_name):
 
 # Алиасы на функции из utils для обратной совместимости
 _storage_to_param_type = get_storage_type_id
-_safe_name = safe_get_name
-
-SP_GROUP_NAME = "RaisedFloor"
-
-
-def _ensure_sp_file():
-    """Проверяет что файл общих параметров задан и существует."""
-    sp_path = app.SharedParametersFilename
-    if not sp_path:
-        raise Exception(tr("fam_sp_not_set"))
-    if not os.path.exists(sp_path):
-        raise Exception(tr("fam_sp_not_found", path=sp_path))
-    return sp_path
-
-
-def _get_or_create_definitions():
-    """Находит или создаёт определения в файле общих параметров.
-
-    Все операции через Revit API: группы и определения создаются
-    штатными методами Groups.Create / Definitions.Create.
-
-    Возвращает dict {name: (ExternalDefinition, is_instance)}.
-    """
-    sp_file = app.OpenSharedParameterFile()
-    if not sp_file:
-        raise Exception(tr("fam_sp_open_failed"))
-
-    group = None
-    for g in sp_file.Groups:
-        if _safe_name(g) == SP_GROUP_NAME:
-            group = g
-            break
-
-    if group is None:
-        group = sp_file.Groups.Create(SP_GROUP_NAME)
-
-    existing_defs = {}
-    for d in group.Definitions:
-        dn = _safe_name(d)
-        if dn:
-            existing_defs[dn] = d
-
-    # Создаём недостающие определения через API
-    for name, st, desc, is_instance in FAMILY_PARAMS:
-        if name not in existing_defs:
-            param_type = _storage_to_param_type(st)
-            opts = ExternalDefinitionCreationOptions(name, param_type)
-            opts.Description = desc
-            existing_defs[name] = group.Definitions.Create(opts)
-
-    # Собираем результат
-    result = {}
-    for name, st, desc, is_instance in FAMILY_PARAMS:
-        if name in existing_defs:
-            result[name] = (existing_defs[name], is_instance)
-        else:
-            raise Exception(tr("fam_def_not_found", name=name))
-
-    return result
 
 
 def _load_fresh_definitions():
-    """Перечитывает определения из файла общих параметров (свежие ссылки).
+    """Load canonical shared definitions with fresh references.
 
-    Вызывается перед обработкой каждого семейства чтобы избежать
-    ситуации со stale-ссылками после LoadFamily/Close.
-
-    Returns:
-        dict: {name: (Definition, is_instance)} для всех FAMILY_PARAMS.
-
-    Raises:
-        Exception: Если файл общих параметров не открыт или группа не найдена.
+    Called before each family to avoid stale references after LoadFamily/Close.
     """
-    # Закрываем и заново открываем файл для получения свежих данных
-    sp_file = app.OpenSharedParameterFile()
-    if not sp_file:
-        raise Exception(tr("fam_sp_open_failed"))
+    definition_specs = []
+    for name, st, desc, is_instance in FAMILY_PARAMS:
+        param_type = _storage_to_param_type(st)
+        if param_type is None:
+            raise Exception("Unsupported parameter type for '{}'".format(name))
+        definition_specs.append(
+            {
+                "name": name,
+                "description": desc,
+                "param_type": param_type,
+            }
+        )
 
-    group = None
-    for g in sp_file.Groups:
-        if _safe_name(g) == SP_GROUP_NAME:
-            group = g
-            break
-
-    if group is None:
-        raise Exception(tr("fam_group_not_found", name=SP_GROUP_NAME))
-
-    existing_defs = {}
-    for d in group.Definitions:
-        if d and d.Name:
-            existing_defs[d.Name] = d
-
+    existing_defs = ensure_schema_definitions(app, definition_specs)
     result = {}
     for name, st, desc, is_instance in FAMILY_PARAMS:
         if name in existing_defs:
@@ -390,6 +272,22 @@ def _process_family(family):
         if not fam_doc:
             return 0, 0, [tr("fam_open_failed", name=family.Name)]
 
+        guid_mismatches = collect_family_parameter_guid_mismatches(fam_doc, allowed)
+        migrated_count = 0
+        if guid_mismatches:
+            mig_result = migrate_family_doc(
+                fam_doc,
+                app,
+                project_doc=None,
+                save_family=False,
+                family_name_hint=family.Name,
+            )
+            if mig_result["errors"]:
+                errors = list(mig_result["errors"])
+                fam_doc.Close(False)
+                return 0, 0, errors
+            migrated_count = len(mig_result.get("replaced", []))
+
         ext_defs = _load_fresh_definitions()
         added, errors = _add_params_to_family_doc(fam_doc, ext_defs, allowed)
 
@@ -399,11 +297,9 @@ def _process_family(family):
             errors.append(tr("fam_obsolete", names=", ".join(sorted(obsolete))))
 
         # Перезагрузка семейства в проект с обработкой ошибок
-        if added:
+        if added or migrated_count:
             try:
-                # Сохраняем семейство перед загрузкой
-                fam_doc.Save()
-                load_result = fam_doc.LoadFamily(doc)
+                load_result = fam_doc.LoadFamily(doc, _ReloadFamilyLoadOptions())
                 if not load_result:
                     errors.append("{}: LoadFamily returned False".format(family.Name))
             except Exception as load_ex:
@@ -473,31 +369,60 @@ def _run_in_family_editor():
         pass
     allowed = _get_params_for_family(fam_name) if fam_name else _ALL_PARAM_NAMES
 
+    guid_mismatches = collect_family_parameter_guid_mismatches(doc, allowed)
+    migrated = []
+    mig_errors = []
+    if guid_mismatches:
+        confirm = forms.alert(
+            "Обнаружены RF_ параметры с неканоническими GUID ({} шт.).\n"
+            "Выполнить миграцию через ReplaceParameter?".format(
+                len(guid_mismatches)
+            ),
+            title=TITLE,
+            yes=True,
+            no=True,
+        )
+        if confirm:
+            mig_result = migrate_family_doc(
+                doc,
+                app,
+                project_doc=None,
+                save_family=False,
+                family_name_hint=fam_name,
+            )
+            migrated = mig_result.get("replaced", [])
+            mig_errors = mig_result.get("errors", [])
+
     ext_defs = _load_fresh_definitions()
 
     added, errors = _add_params_to_family_doc(doc, ext_defs, allowed)
+    errors.extend(mig_errors)
 
     # Находим устаревшие (не удаляем — могут использоваться в геометрии)
     obsolete = _find_obsolete_params(doc, allowed)
 
-    if not added and not obsolete and not errors:
+    if not added and not obsolete and not errors and not migrated:
         forms.alert(tr("fam_all_ok"), title=TITLE)
         return
 
-    report = []
+    output = script.get_output()
+    output.set_title("RF Family Parameters")
+    if migrated:
+        output.print_md("### Migrated GUIDs: {}".format(len(migrated)))
+        for name, old_g, new_g in migrated:
+            output.print_md("- **{}**: `{}` → `{}`".format(name, old_g, new_g))
     if obsolete:
-        report.append(tr("fam_obsolete_header"))
+        output.print_md("### " + tr("fam_obsolete_header"))
         for n in sorted(obsolete):
-            report.append("  - {}".format(n))
+            output.print_md("- {}".format(n))
     if added:
-        report.append(tr("fam_added", count=len(added)))
+        output.print_md("### " + tr("fam_added", count=len(added)))
         for n in sorted(added):
-            report.append("  + {}".format(n))
+            output.print_md("- + {}".format(n))
     if errors:
-        report.append(tr("clean_errors_header"))
+        output.print_md("### " + tr("clean_errors_header"))
         for e in errors:
-            report.append("  " + e)
-    forms.alert("\n".join(report), title=TITLE)
+            output.print_md("- {}".format(e))
 
 
 def _run_in_project():
@@ -555,10 +480,6 @@ try:
     if not doc:
         raise Exception("No active document")
     app = doc.Application
-
-    _ensure_sp_file()
-    # Создаём определения в ФОП через Revit API
-    _get_or_create_definitions()
 
     if doc.IsFamilyDocument:
         _run_in_family_editor()

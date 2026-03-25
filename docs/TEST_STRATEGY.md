@@ -310,6 +310,12 @@ Definition of done:
 - Revit version in report
 - active document name in report
 - error list with subsystem labels
+- report must not rely on one UI surface only
+- preferred reporting sinks:
+  - `pyRevit output`
+  - `script.get_logger()`
+  - temporary text log file when the flow is diagnostic or maintenance-heavy
+- if a text log file is created, its path should be surfaced in the final summary
 
 ### Revit integration
 
@@ -486,6 +492,9 @@ A good test report should answer all of these:
 - was the result acceptable?
 - where exactly is the weak spot?
 - is the outcome stable across reruns and versions?
+- did the command write to at least one non-modal surface even if the output window misbehaves?
+- is there enough step-by-step trace to identify the failing phase quickly?
+- can a tester reopen the same log outside the modal dialog path?
 
 ## Exit Criteria For Refactoring
 
@@ -504,3 +513,5 @@ This avoids rewriting large Revit-dependent scripts without a safety net.
 3. Define the exact smoke checklist for Revit 2024 and 2026.
 4. Prepare a dedicated test project model.
 5. Add first end-to-end integration scenarios on that model.
+
+

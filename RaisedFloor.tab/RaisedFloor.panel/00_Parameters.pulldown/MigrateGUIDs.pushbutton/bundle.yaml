@@ -1,0 +1,5 @@
+title: Миграция GUID
+tooltip: >-
+  Maintenance-команда: мигрирует RF_* параметры в RF_Tile, RF_Stringer и RF_Support
+  на канонические shared GUID, при возможности сохраняет .rfa на диск и
+  перезагружает семейства в текущий проект.

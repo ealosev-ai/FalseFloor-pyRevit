@@ -6,5 +6,6 @@ tooltip: >-
 layout:
   - Project.pushbutton[title:Проект]
   - Families.pushbutton[title:Семейства]
+  - MigrateGUIDs.pushbutton[title:Миграция GUID]
   - UILanguage.pushbutton
   - ClearParams.pushbutton[title:Очистить]

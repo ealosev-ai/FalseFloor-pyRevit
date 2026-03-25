@@ -37,6 +37,13 @@ from floor_exact import internal_to_mm, mm_to_internal  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_config import (  # type: ignore
+    DEFAULT_BOTTOM_STEP_MM,
+    DEFAULT_MAX_STRINGER_LENGTH_MM,
+    DEFAULT_SUPPORT_SPACING_MM,
+    GEOM_TOL,
+)
+from rf_param_schema import RFFamilies, RFParams as P  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 doc = None
@@ -44,11 +51,10 @@ uidoc = None
 view = None
 
 TITLE = tr("reinf_add_title")
-FAMILY_LONGERON = "RF_Stringer"
-FAMILY_SUPPORT = "RF_Support"
-PARAM_ZONES = "RF_Reinf_Zones_JSON"
-TOL = 1e-6
-DEFAULT_SUPPORT_SPACING_MM = 1000.0
+FAMILY_LONGERON = RFFamilies.STRINGER
+FAMILY_SUPPORT = RFFamilies.SUPPORT
+PARAM_ZONES = P.REINF_ZONES_JSON
+TOL = GEOM_TOL
 PREVIEW_STYLE_UPPER = "RF_Preview_Top"
 PREVIEW_STYLE_LOWER = "RF_Preview_Bottom"
 
@@ -335,7 +341,7 @@ def _snap_range_to_crossings(a, b, crossings):
 
 
 def _read_max_len_from_floor(floor):
-    mm = get_mm_param(floor, "RF_Max_Stringer_Len", 4000.0)
+    mm = get_mm_param(floor, P.MAX_STRINGER_LEN, DEFAULT_MAX_STRINGER_LENGTH_MM)
     return mm_to_internal(max(100.0, mm))
 
 
@@ -371,13 +377,13 @@ def _layer_axes(floor):
     upper_axis = None
     lower_axis = None
 
-    upper_saved = get_string_param(floor, "RF_Top_Direction")
+    upper_saved = get_string_param(floor, P.TOP_DIRECTION)
     if upper_saved in ("X", "Y"):
         upper_axis = upper_saved
         lower_axis = "Y" if upper_axis == "X" else "X"
 
-    upper_segs = _read_layer_segments_from_ids("RF_Stringers_Top_ID")
-    lower_segs = _read_layer_segments_from_ids("RF_Stringers_Bottom_ID")
+    upper_segs = _read_layer_segments_from_ids(P.STRINGERS_TOP_ID)
+    lower_segs = _read_layer_segments_from_ids(P.STRINGERS_BOTTOM_ID)
 
     up_seg_axis = _get_axis_from_segments(upper_segs)
     lo_seg_axis = _get_axis_from_segments(lower_segs)
@@ -501,13 +507,17 @@ def _get_support_symbol():
 
 def _calc_z_offsets(floor, level, sym_upper, sym_lower):
     ph_upper = (
-        (get_double_param(sym_upper, "RF_Profile_Height") or 0.0) if sym_upper else 0.0
+        (get_double_param(sym_upper, P.PROFILE_HEIGHT) or 0.0)
+        if sym_upper
+        else 0.0
     )
     ph_lower = (
-        (get_double_param(sym_lower, "RF_Profile_Height") or 0.0) if sym_lower else 0.0
+        (get_double_param(sym_lower, P.PROFILE_HEIGHT) or 0.0)
+        if sym_lower
+        else 0.0
     )
-    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
-    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
+    total_h = get_double_param(floor, P.FLOOR_HEIGHT) or 0.0
+    tile_t = get_double_param(floor, P.TILE_THICKNESS) or 0.0
     bbox = get_bbox_xy(floor, view)
     if not bbox or len(bbox) < 6:
         raise Exception("get_bbox_xy: неожиданный формат")
@@ -534,9 +544,9 @@ def _place_longerons(segs, symbol, level, z0, dz, prefix, axis_label, zone_id):
             ElementTransformUtils.MoveElement(doc, inst.Id, XYZ(0, 0, dz))
 
         l_mm = int(round(internal_to_mm(line.Length)))
-        _set_param(inst, "RF_Stringer_Type", "Upper" if prefix == "УВ" else "Lower")
-        _set_param(inst, "RF_Direction_Axis", axis_label)
-        _set_param(inst, "RF_Mark", "{}.{}.{}.{}мм".format(prefix, zone_id, i, l_mm))
+        _set_param(inst, P.STRINGER_TYPE, "Upper" if prefix == "УВ" else "Lower")
+        _set_param(inst, P.DIRECTION_AXIS, axis_label)
+        _set_param(inst, P.MARK, "{}.{}.{}.{}мм".format(prefix, zone_id, i, l_mm))
         ids.append(str(_eid_int(inst.Id)))
     return ids
 
@@ -563,8 +573,8 @@ def _place_supports(nodes, symbol, level, z0, support_h, lower_axis, zone_id):
             axis = Line.CreateBound(XYZ(sx, sy, z0), XYZ(sx, sy, z0 + 1.0))
             ElementTransformUtils.RotateElement(doc, inst.Id, axis, angle)
         if support_h > 0:
-            _set_param(inst, "RF_Support_Height", support_h)
-        _set_param(inst, "RF_Mark", "УС.{}.{}".format(zone_id, i))
+            _set_param(inst, P.SUPPORT_HEIGHT, support_h)
+        _set_param(inst, P.MARK, "УС.{}.{}".format(zone_id, i))
         ids.append(str(_eid_int(inst.Id)))
     return ids
 
@@ -674,8 +684,8 @@ def _get_base_symbols(floor):
     sym_upper = sym_lower = support_sym = None
 
     for param_name, attr in [
-        ("RF_Stringers_Top_ID", "upper"),
-        ("RF_Stringers_Bottom_ID", "lower"),
+        (P.STRINGERS_TOP_ID, "upper"),
+        (P.STRINGERS_BOTTOM_ID, "lower"),
     ]:
         ids = parse_ids_from_string(get_string_param(floor, param_name))
         for int_id in ids:
@@ -714,7 +724,9 @@ def _rect_mode_build(floor, upper_axis, lower_axis, upper_base_segs, lower_base_
     x_min, y_min, x_max, y_max = rect
 
     # Текущий базовый шаг для подсказки
-    base_step_mm = max(100.0, float(get_mm_param(floor, "RF_Bottom_Step", 1200.0)))
+    base_step_mm = max(
+        100.0, float(get_mm_param(floor, P.BOTTOM_STEP, DEFAULT_BOTTOM_STEP_MM))
+    )
     default_reinforced = max(100.0, base_step_mm / 2.0)
 
     layer_choice = forms.CommandSwitchWindow.show(
@@ -855,8 +867,8 @@ def main():
     floor = _pick_floor()
 
     with revit.Transaction("Нормализовать параметры усиления"):
-        normalize_legacy_mm_param(floor, "RF_Bottom_Step")
-        normalize_legacy_mm_param(floor, "RF_Max_Stringer_Len")
+        normalize_legacy_mm_param(floor, P.BOTTOM_STEP)
+        normalize_legacy_mm_param(floor, P.MAX_STRINGER_LEN)
 
     if floor.LookupParameter(PARAM_ZONES) is None:
         forms.alert(
@@ -937,15 +949,15 @@ def main():
         floor, level, sym_upper, sym_lower
     )
 
-    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
-    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
+    total_h = get_double_param(floor, P.FLOOR_HEIGHT) or 0.0
+    tile_t = get_double_param(floor, P.TILE_THICKNESS) or 0.0
     support_h = total_h - tile_t - ph_up - ph_low if total_h > 0 else 0.0
 
     support_ids = []
     support_nodes = []
     if lower_new and support_symbol is not None:
         max_sp = mm_to_internal(DEFAULT_SUPPORT_SPACING_MM)
-        base_size = get_double_param(support_symbol, "RF_Base_Size") or 0.0
+        base_size = get_double_param(support_symbol, P.BASE_SIZE) or 0.0
         support_nodes = _generate_support_nodes(lower_new, max_sp, base_size / 2.0)
 
     zone_id = datetime.now().strftime("ZU%Y%m%d%H%M%S")

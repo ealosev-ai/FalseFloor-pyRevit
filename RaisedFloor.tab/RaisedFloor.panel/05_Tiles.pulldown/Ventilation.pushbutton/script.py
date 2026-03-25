@@ -14,12 +14,13 @@ from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_param_schema import RFFamilies, RFParams as P  # type: ignore
 from revit_context import get_doc, get_uidoc  # type: ignore
 
 doc = None
 uidoc = None
 TITLE = tr("vent_title")
-FAMILY_NAME = "RF_Tile"
+FAMILY_NAME = RFFamilies.TILE
 
 
 class _Cancel(Exception):
@@ -127,7 +128,7 @@ try:
         raise _Cancel()
 
     # --- Определяем действие: пометить или снять ---
-    vent_count = sum(1 for t in tiles if _get_int_param(t, "RF_Ventilated") == 1)
+    vent_count = sum(1 for t in tiles if _get_int_param(t, P.VENTILATED) == 1)
     non_vent_count = len(tiles) - vent_count
 
     if vent_count == 0:
@@ -167,18 +168,18 @@ try:
         changed = 0
         for tile in tiles:
             if action == "mark":
-                _set_int_param(tile, "RF_Ventilated", 1)
-                mark = _get_string_param(tile, "RF_Mark")
+                _set_int_param(tile, P.VENTILATED, 1)
+                mark = _get_string_param(tile, P.MARK)
                 if mark and not mark.endswith(".В"):
-                    _set_string_param(tile, "RF_Mark", mark + ".В")
+                    _set_string_param(tile, P.MARK, mark + ".В")
                 if vent_type:
                     tile.ChangeTypeId(vent_type.Id)
                 changed += 1
             else:
-                _set_int_param(tile, "RF_Ventilated", 0)
-                mark = _get_string_param(tile, "RF_Mark")
+                _set_int_param(tile, P.VENTILATED, 0)
+                mark = _get_string_param(tile, P.MARK)
                 if mark and mark.endswith(".В"):
-                    _set_string_param(tile, "RF_Mark", mark[:-2])
+                    _set_string_param(tile, P.MARK, mark[:-2])
                 if std_type:
                     tile.ChangeTypeId(std_type.Id)
                 changed += 1

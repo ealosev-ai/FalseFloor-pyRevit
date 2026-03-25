@@ -13,6 +13,7 @@ from floor_common import (  # type: ignore
 )
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 TITLE = tr("del_title_tiles")
@@ -46,7 +47,7 @@ try:
     if not floor:
         raise Exception(tr("source_floor_not_found"))
 
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Tiles_ID"))
+    old_ids = parse_ids_from_string(get_string_param(floor, P.TILES_ID))
     if not old_ids:
         forms.alert(tr("del_not_found_tiles"), title=TITLE)
         raise _Cancel()
@@ -70,7 +71,7 @@ try:
                     deleted += 1
             except Exception:
                 pass
-        set_string_param(floor, "RF_Tiles_ID", "")
+        set_string_param(floor, P.TILES_ID, "")
 
     forms.alert(tr("del_done_tiles", count=deleted), title=TITLE)
 

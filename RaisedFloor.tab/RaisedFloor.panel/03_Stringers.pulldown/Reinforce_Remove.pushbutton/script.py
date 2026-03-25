@@ -11,11 +11,12 @@ from floor_common import (  # type: ignore
     save_reinforcement_zones,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 TITLE = tr("reinf_del_title")
-PARAM_ZONES = "RF_Reinf_Zones_JSON"
+PARAM_ZONES = P.REINF_ZONES_JSON
 
 
 class _Cancel(Exception):

@@ -20,6 +20,7 @@ from floor_common import (  # type: ignore
 )
 from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_CONTOUR  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
@@ -116,7 +117,7 @@ try:
             curves.append(curve.Clone())
 
     # ID для удаления: только линии текущего перекрытия
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Contour_Lines_ID"))
+    old_ids = parse_ids_from_string(get_string_param(floor, P.CONTOUR_LINES_ID))
     ids_to_delete = old_ids
 
     created_ids = []
@@ -142,7 +143,7 @@ try:
                 pass
 
         ids_string = ";".join(created_ids)
-        ok = set_string_param(floor, "RF_Contour_Lines_ID", ids_string)
+        ok = set_string_param(floor, P.CONTOUR_LINES_ID, ids_string)
         if not ok:
             raise Exception(tr("contour_write_failed"))
 

@@ -40,6 +40,8 @@ from floor_exact import (  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_config import DEFAULT_SUPPORT_SPACING_MM, GEOM_TOL  # type: ignore
+from rf_param_schema import RFFamilies, RFParams as P  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 doc = None
@@ -47,9 +49,8 @@ uidoc = None
 view = None
 
 TITLE = tr("title_supports")
-FAMILY_SUPPORT = "RF_Support"
-COORD_TOL = 1e-6
-DEFAULT_MIN_SPACING_MM = 1000.0  # мин. шаг между стойками (не чаще чем)
+FAMILY_SUPPORT = RFFamilies.SUPPORT
+COORD_TOL = GEOM_TOL
 
 
 class _Cancel(Exception):
@@ -88,8 +89,8 @@ def _set_param(inst, name, value):
 def _get_tile_thickness_fallback():
     """Возвращает толщину плитки (ft) из семейства RF_Tile как fallback."""
     thickness = 0.0
-    for sym in _get_family_symbols("RF_Tile"):
-        t = get_double_param(sym, "RF_Thickness") or 0.0
+    for sym in _get_family_symbols(RFFamilies.TILE):
+        t = get_double_param(sym, P.THICKNESS) or 0.0
         if t > thickness:
             thickness = t
     return thickness
@@ -97,7 +98,7 @@ def _get_tile_thickness_fallback():
 
 def _read_grid_lines(floor_el):
     """Читает DetailCurves сетки → v_keys, h_keys (отсортированные координаты)."""
-    ids = parse_ids_from_string(get_string_param(floor_el, "RF_Grid_Lines_ID"))
+    ids = parse_ids_from_string(get_string_param(floor_el, P.GRID_LINES_ID))
     v_set = set()
     h_set = set()
     for int_id in ids:
@@ -120,7 +121,7 @@ def _read_grid_lines(floor_el):
 
 def _read_lower_segments(floor_el):
     """Читает нижние лонжероны → список (x1, y1, x2, y2)."""
-    ids = parse_ids_from_string(get_string_param(floor_el, "RF_Stringers_Bottom_ID"))
+    ids = parse_ids_from_string(get_string_param(floor_el, P.STRINGERS_BOTTOM_ID))
     segs = []
     for int_id in ids:
         el = doc.GetElement(ElementId(int_id))
@@ -225,7 +226,7 @@ try:
     # Спросить мин. шаг стоек
     s_spacing = forms.ask_for_string(
         prompt=tr("prompt_support_spacing"),
-        default=str(int(DEFAULT_MIN_SPACING_MM)),
+        default=str(int(DEFAULT_SUPPORT_SPACING_MM)),
         title=TITLE,
     )
     if not s_spacing:
@@ -252,7 +253,7 @@ try:
     profile_h_upper = 0.0
     profile_h_lower = 0.0
 
-    upper_ids_str = get_string_param(floor, "RF_Stringers_Top_ID")
+    upper_ids_str = get_string_param(floor, P.STRINGERS_TOP_ID)
     upper_longeron_ids = parse_ids_from_string(upper_ids_str)
     if not upper_longeron_ids:
         proceed = forms.alert(
@@ -269,20 +270,20 @@ try:
         if first_el:
             t = doc.GetElement(first_el.GetTypeId())
             if t:
-                profile_h_upper = get_double_param(t, "RF_Profile_Height") or 0.0
+                profile_h_upper = get_double_param(t, P.PROFILE_HEIGHT) or 0.0
 
     lower_longeron_ids = parse_ids_from_string(
-        get_string_param(floor, "RF_Stringers_Bottom_ID")
+        get_string_param(floor, P.STRINGERS_BOTTOM_ID)
     )
     if lower_longeron_ids:
         first_el = doc.GetElement(ElementId(lower_longeron_ids[0]))
         if first_el:
             t = doc.GetElement(first_el.GetTypeId())
             if t:
-                profile_h_lower = get_double_param(t, "RF_Profile_Height") or 0.0
+                profile_h_lower = get_double_param(t, P.PROFILE_HEIGHT) or 0.0
 
-    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
-    tile_t = get_double_param(floor, "RF_Tile_Thickness") or 0.0
+    total_h = get_double_param(floor, P.FLOOR_HEIGHT) or 0.0
+    tile_t = get_double_param(floor, P.TILE_THICKNESS) or 0.0
     if tile_t <= COORD_TOL:
         tile_t = _get_tile_thickness_fallback()
 
@@ -308,7 +309,7 @@ try:
     )
 
     # Генерация узлов стоек
-    base_size = get_double_param(sym_support, "RF_Base_Size") or 0.0
+    base_size = get_double_param(sym_support, P.BASE_SIZE) or 0.0
     support_half = base_size / 2.0
     # Перпендикулярные линии сетки для выравнивания стоек в ряд
     if lower_axis == "X":
@@ -347,7 +348,7 @@ try:
     z0 = z0_abs - level_elevation
 
     # Подтверждение
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Supports_ID"))
+    old_ids = parse_ids_from_string(get_string_param(floor, P.SUPPORTS_ID))
 
     msg = [
         tr("supports_count", count=len(support_nodes)),
@@ -411,14 +412,14 @@ try:
             s_count += 1
             col = _nearest_idx(v_keys, sx)
             row = _nearest_idx(h_keys, sy)
-            _set_param(inst, "RF_Column", col)
-            _set_param(inst, "RF_Row", row)
-            _set_param(inst, "RF_Mark", "СТ.{}".format(s_count))
+            _set_param(inst, P.COLUMN, col)
+            _set_param(inst, P.ROW, row)
+            _set_param(inst, P.MARK, "СТ.{}".format(s_count))
             if support_h > 0:
-                _set_param(inst, "RF_Support_Height", support_h)
+                _set_param(inst, P.SUPPORT_HEIGHT, support_h)
             placed_ids.append(str(inst.Id.Value))
 
-        set_string_param(floor, "RF_Supports_ID", ";".join(placed_ids))
+        set_string_param(floor, P.SUPPORTS_ID, ";".join(placed_ids))
 
     report = tr("supports_done", count=s_count, deleted=deleted)
     report += "\n" + tr("supports_axis", axis=lower_axis)

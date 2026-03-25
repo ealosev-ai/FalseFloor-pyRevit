@@ -12,6 +12,7 @@ from floor_common import (  # type: ignore
     set_string_param,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
@@ -46,8 +47,8 @@ try:
     if not floor:
         raise Exception(tr("source_floor_not_found"))
 
-    upper_ids = parse_ids_from_string(get_string_param(floor, "RF_Stringers_Top_ID"))
-    lower_ids = parse_ids_from_string(get_string_param(floor, "RF_Stringers_Bottom_ID"))
+    upper_ids = parse_ids_from_string(get_string_param(floor, P.STRINGERS_TOP_ID))
+    lower_ids = parse_ids_from_string(get_string_param(floor, P.STRINGERS_BOTTOM_ID))
     all_ids = list(set(upper_ids + lower_ids))
 
     if not all_ids:
@@ -78,8 +79,8 @@ try:
                     deleted += 1
             except Exception:
                 pass
-        set_string_param(floor, "RF_Stringers_Top_ID", "")
-        set_string_param(floor, "RF_Stringers_Bottom_ID", "")
+        set_string_param(floor, P.STRINGERS_TOP_ID, "")
+        set_string_param(floor, P.STRINGERS_BOTTOM_ID, "")
 
     forms.alert(tr("del_done_longerons", count=deleted), title=TITLE)
 

@@ -23,6 +23,7 @@ from floor_ui import (  # type: ignore
     get_shift_quality_status,
 )
 from pyrevit import forms, revit  # type: ignore
+from rf_param_schema import RFFamilies, RFParams as P  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 
@@ -62,27 +63,29 @@ try:
         raise Exception(tr("source_floor_not_found"))
 
     # Запоминаем текущее смещение до оптимизации
-    cur_sx = get_double_param(floor, "RF_Offset_X")
-    cur_sy = get_double_param(floor, "RF_Offset_Y")
+    cur_sx = get_double_param(floor, P.OFFSET_X)
+    cur_sy = get_double_param(floor, P.OFFSET_Y)
     cur_sx_mm = round(internal_to_mm(cur_sx)) if cur_sx else 0.0
     cur_sy_mm = round(internal_to_mm(cur_sy)) if cur_sy else 0.0
 
     # Параметры плитки и высоты для отображения в отчёте
-    step_x_raw = get_double_param(floor, "RF_Step_X")
-    step_y_raw = get_double_param(floor, "RF_Step_Y")
+    step_x_raw = get_double_param(floor, P.STEP_X)
+    step_y_raw = get_double_param(floor, P.STEP_Y)
+    base_x_raw = get_double_param(floor, P.BASE_X) or 0.0
+    base_y_raw = get_double_param(floor, P.BASE_Y) or 0.0
     tile_w = round(internal_to_mm(step_x_raw)) if step_x_raw else "?"
     tile_h = round(internal_to_mm(step_y_raw)) if step_y_raw else "?"
-    floor_h_raw = get_double_param(floor, "RF_Floor_Height")
+    floor_h_raw = get_double_param(floor, P.FLOOR_HEIGHT)
     floor_h = round(internal_to_mm(floor_h_raw)) if floor_h_raw else "?"
 
     # Зазор от рёбер вырезов = макс. ширина профиля стрингера
     _stringer_clearance_mm = 0
     for fam in FilteredElementCollector(doc).OfClass(Family):
-        if fam.Name == "RF_Stringer":
+        if fam.Name == RFFamilies.STRINGER:
             for sid in fam.GetFamilySymbolIds():
                 sym = doc.GetElement(sid)
                 if sym:
-                    pw = get_double_param(sym, "RF_Profile_Width")
+                    pw = get_double_param(sym, P.PROFILE_WIDTH)
                     if pw:
                         pw_mm = internal_to_mm(pw)
                         if pw_mm > _stringer_clearance_mm:
@@ -166,17 +169,26 @@ try:
         raise _Cancel()
 
     with revit.Transaction(tr("tx_apply_shift")):
-        ok_x = set_double_param(floor, "RF_Offset_X", best["shift_x_internal"])
-        ok_y = set_double_param(floor, "RF_Offset_Y", best["shift_y_internal"])
+        ok_x = set_double_param(floor, P.OFFSET_X, best["shift_x_internal"])
+        ok_y = set_double_param(floor, P.OFFSET_Y, best["shift_y_internal"])
 
         if not ok_x or not ok_y:
             raise Exception(tr("shift_write_failed"))
+
+    cleanup_marker_points = [
+        (base_x_raw + (cur_sx or 0.0), base_y_raw + (cur_sy or 0.0)),
+        (
+            base_x_raw + best["shift_x_internal"],
+            base_y_raw + best["shift_y_internal"],
+        ),
+    ]
 
     grid_result = redraw_grid_for_floor(
         floor,
         view,
         tr("tx_redraw_grid"),
         non_viable_cells=best.get("non_viable_cells"),
+        cleanup_marker_points=cleanup_marker_points,
     )
 
     done = []

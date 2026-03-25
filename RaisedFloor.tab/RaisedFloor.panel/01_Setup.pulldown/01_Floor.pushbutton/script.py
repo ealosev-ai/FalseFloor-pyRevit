@@ -12,6 +12,7 @@ from floor_common import (  # type: ignore
 )
 from floor_i18n import tr  # type: ignore
 from floor_ui import TITLE_PREPARE  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_doc, get_uidoc  # type: ignore
 
@@ -84,21 +85,21 @@ try:
 
     with revit.Transaction(tr("tx_prepare_floor")):
         pairs = [
-            ("RF_Step_X", mm_to_internal(step_x_mm)),
-            ("RF_Step_Y", mm_to_internal(step_y_mm)),
-            ("RF_Offset_X", 0.0),
-            ("RF_Offset_Y", 0.0),
-            ("RF_Base_X", base_point.X),
-            ("RF_Base_Y", base_point.Y),
-            ("RF_Base_Z", base_point.Z),
-            ("RF_Floor_Height", mm_to_internal(height_mm)),
+            (P.STEP_X, mm_to_internal(step_x_mm)),
+            (P.STEP_Y, mm_to_internal(step_y_mm)),
+            (P.OFFSET_X, 0.0),
+            (P.OFFSET_Y, 0.0),
+            (P.BASE_X, base_point.X),
+            (P.BASE_Y, base_point.Y),
+            (P.BASE_Z, base_point.Z),
+            (P.FLOOR_HEIGHT, mm_to_internal(height_mm)),
         ]
         for name, val in pairs:
             if not set_double_param(floor, name, val):
                 missing_params.append(name)
 
-        if not set_string_param(floor, "RF_Gen_Status", "Подготовлено"):
-            missing_params.append("RF_Gen_Status")
+        if not set_string_param(floor, P.GEN_STATUS, "Подготовлено"):
+            missing_params.append(P.GEN_STATUS)
 
     # 5. Отчёт
     if missing_params:

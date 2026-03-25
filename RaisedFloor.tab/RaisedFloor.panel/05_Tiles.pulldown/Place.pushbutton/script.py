@@ -35,6 +35,17 @@ from floor_exact import (  # type: ignore
 from floor_grid import get_bbox_xy  # type: ignore
 from floor_i18n import tr  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_config import (  # type: ignore
+    DEFAULT_TILE_THICKNESS_MM,
+    MIN_VIABLE_TILE_WIDTH_MM,
+    VOID_HIDDEN_THRESHOLD_MM,
+)
+from rf_param_schema import (  # type: ignore
+    RFFamilies,
+    RF_TILE_REQUIRED_INSTANCE_PARAMS,
+    RF_TILE_VOID_PARAM_GROUPS,
+    RFParams as P,
+)
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 doc = None
@@ -42,24 +53,10 @@ uidoc = None
 view = None
 
 TITLE = tr("title_tiles")
-FAMILY_NAME = "RF_Tile"
-MIN_VIABLE_WIDTH_MM = 100.0
-_REQUIRED_PARAMS = [
-    "RF_Column",
-    "RF_Row",
-    "RF_Tile_Type",
-    "RF_Tile_Size_X",
-    "RF_Tile_Size_Y",
-    "RF_Cut_X",
-    "RF_Cut_Y",
-    "RF_Mark",
-]
-_VOID_PARAMS = (
-    ("RF_Void1_X", "RF_Void1_Y", "RF_Void1_OX", "RF_Void1_OY"),
-    ("RF_Void2_X", "RF_Void2_Y", "RF_Void2_OX", "RF_Void2_OY"),
-    ("RF_Void3_X", "RF_Void3_Y", "RF_Void3_OX", "RF_Void3_OY"),
-)
-_VOID_MIN = mm_to_internal(1.0)  # void hidden by formula RF_Void*_X ≤ 1mm
+FAMILY_NAME = RFFamilies.TILE
+_REQUIRED_PARAMS = RF_TILE_REQUIRED_INSTANCE_PARAMS
+_VOID_PARAMS = RF_TILE_VOID_PARAM_GROUPS
+_VOID_MIN = mm_to_internal(VOID_HIDDEN_THRESHOLD_MM)  # void hidden by formula
 
 
 class _Cancel(Exception):
@@ -115,7 +112,7 @@ def _is_viable(result):
     if result["is_full"]:
         return True
     if result["is_partial"]:
-        return result.get("min_width_mm", 0.0) >= MIN_VIABLE_WIDTH_MM
+        return result.get("min_width_mm", 0.0) >= MIN_VIABLE_TILE_WIDTH_MM
     return False
 
 
@@ -148,9 +145,9 @@ def _collect_vent_cells(old_ids):
     for int_id in old_ids:
         try:
             el = doc.GetElement(ElementId(int_id))
-            if el and _get_int_param(el, "RF_Ventilated") == 1:
-                row = _get_int_param(el, "RF_Row")
-                col = _get_int_param(el, "RF_Column")
+            if el and _get_int_param(el, P.VENTILATED) == 1:
+                row = _get_int_param(el, P.ROW)
+                col = _get_int_param(el, P.COLUMN)
                 vent_cells.add((row, col))
         except Exception:
             pass
@@ -237,8 +234,8 @@ try:
     base_x_raw = params["base_x_raw"]
     base_y_raw = params["base_y_raw"]
 
-    shift_x = get_double_param(floor, "RF_Offset_X") or 0.0
-    shift_y = get_double_param(floor, "RF_Offset_Y") or 0.0
+    shift_x = get_double_param(floor, P.OFFSET_X) or 0.0
+    shift_y = get_double_param(floor, P.OFFSET_Y) or 0.0
 
     base_x = base_x_raw + shift_x
     base_y = base_y_raw + shift_y
@@ -257,10 +254,12 @@ try:
     # Z: верх перекрытия + высота стека (или fallback: толщина плитки)
     bbox_data = get_bbox_xy(floor, view)
     z_top = bbox_data[5] if bbox_data else 0.0  # Max.Z = верх перекрытия
-    p_thick = symbol.LookupParameter("RF_Thickness")
-    tile_thickness = p_thick.AsDouble() if p_thick else mm_to_internal(40.0)
+    p_thick = symbol.LookupParameter(P.THICKNESS)
+    tile_thickness = (
+        p_thick.AsDouble() if p_thick else mm_to_internal(DEFAULT_TILE_THICKNESS_MM)
+    )
 
-    total_h = get_double_param(floor, "RF_Floor_Height") or 0.0
+    total_h = get_double_param(floor, P.FLOOR_HEIGHT) or 0.0
     if total_h > 0:
         z0 = z_top + total_h - tile_thickness
     else:
@@ -278,7 +277,7 @@ try:
     z0 = z0 - level_elevation
 
     # --- Старые плитки: собрать вентилируемые ---
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Tiles_ID"))
+    old_ids = parse_ids_from_string(get_string_param(floor, P.TILES_ID))
     vent_cells = _collect_vent_cells(old_ids)
     keep_vent = False
 
@@ -434,19 +433,19 @@ try:
                 # Колонка/ряд от базы
                 col = int(round((x0 - base_x) / step_x))
                 row = int(round((y0 - base_y) / step_y))
-                _set_instance_param(instance, "RF_Column", col)
-                _set_instance_param(instance, "RF_Row", row)
-                _set_instance_param(instance, "RF_Mark", "ПЛ.{}.{}".format(row, col))
-                _set_instance_param(instance, "RF_Ventilated", 0)
+                _set_instance_param(instance, P.COLUMN, col)
+                _set_instance_param(instance, P.ROW, row)
+                _set_instance_param(instance, P.MARK, "ПЛ.{}.{}".format(row, col))
+                _set_instance_param(instance, P.VENTILATED, 0)
 
                 # Базовый размер плитки = шаг сетки
-                _set_instance_param(instance, "RF_Tile_Size_X", step_x)
-                _set_instance_param(instance, "RF_Tile_Size_Y", step_y)
+                _set_instance_param(instance, P.TILE_SIZE_X, step_x)
+                _set_instance_param(instance, P.TILE_SIZE_Y, step_y)
 
                 if result["is_full"]:
-                    _set_instance_param(instance, "RF_Tile_Type", "Full")
-                    _set_instance_param(instance, "RF_Cut_X", 0.0)
-                    _set_instance_param(instance, "RF_Cut_Y", 0.0)
+                    _set_instance_param(instance, P.TILE_TYPE, "Full")
+                    _set_instance_param(instance, P.CUT_X, 0.0)
+                    _set_instance_param(instance, P.CUT_Y, 0.0)
                     # Void hidden by formula (RF_Void*_X ≤ 1mm)
                     for vp in _VOID_PARAMS:
                         _set_instance_param(instance, vp[0], _VOID_MIN)
@@ -462,11 +461,11 @@ try:
                     py = mm_to_internal(cut_y)
 
                     if result["is_simple_cut"]:
-                        _set_instance_param(instance, "RF_Tile_Type", "SimpleCut")
+                        _set_instance_param(instance, P.TILE_TYPE, "SimpleCut")
                     else:
-                        _set_instance_param(instance, "RF_Tile_Type", "ComplexCut")
-                    _set_instance_param(instance, "RF_Cut_X", px)
-                    _set_instance_param(instance, "RF_Cut_Y", py)
+                        _set_instance_param(instance, P.TILE_TYPE, "ComplexCut")
+                    _set_instance_param(instance, P.CUT_X, px)
+                    _set_instance_param(instance, P.CUT_Y, py)
 
                     # Voids = cell − clipped (до 3 вырезов)
                     clipped = result.get("clipped_paths")
@@ -510,10 +509,10 @@ try:
 
         # Сохранить ID для будущего удаления
         ids_string = ";".join(placed_ids)
-        set_string_param(floor, "RF_Tiles_ID", ids_string)
+        set_string_param(floor, P.TILES_ID, ids_string)
 
         # Записать толщину плитки для расчёта высот в 06/07
-        set_double_param(floor, "RF_Tile_Thickness", tile_thickness)
+        set_double_param(floor, P.TILE_THICKNESS, tile_thickness)
 
         # --- Восстановление вентиляции ---
         vent_restored = 0
@@ -526,13 +525,13 @@ try:
                     el = doc.GetElement(ElementId(int(str_id)))
                     if not el:
                         continue
-                    r = _get_int_param(el, "RF_Row")
-                    c = _get_int_param(el, "RF_Column")
+                    r = _get_int_param(el, P.ROW)
+                    c = _get_int_param(el, P.COLUMN)
                     if (r, c) in vent_cells:
-                        _set_instance_param(el, "RF_Ventilated", 1)
-                        mark = _get_string_param(el, "RF_Mark")
+                        _set_instance_param(el, P.VENTILATED, 1)
+                        mark = _get_string_param(el, P.MARK)
                         if mark and not mark.endswith(".В"):
-                            _set_instance_param(el, "RF_Mark", mark + ".В")
+                            _set_instance_param(el, P.MARK, mark + ".В")
                         if vent_sym:
                             el.ChangeTypeId(vent_sym.Id)
                         vent_restored += 1

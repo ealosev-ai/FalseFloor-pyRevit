@@ -12,12 +12,22 @@ from Autodesk.Revit.DB import (  # type: ignore
 from floor_common import (
     build_positions,
     get_double_param,
+    get_id_value,
     get_line_style_id,
     get_or_create_line_style,
     get_string_param,
     parse_ids_from_string,
     set_string_param,
 )
+from rf_config import (  # type: ignore
+    CLIPPER_SCALE,
+    DEFAULT_STRINGER_CLEARANCE_MM,
+    GRID_MARKER_ARM_FT,
+    GRID_MARKER_RING_HALF_FT,
+    MIN_SEGMENT_LENGTH_FT,
+    MM_PER_FOOT,
+)
+from rf_param_schema import RFFamilies, RFParams as P  # type: ignore
 from revit_context import get_doc  # type: ignore
 from pyrevit import revit  # type: ignore
 
@@ -37,39 +47,33 @@ NEAR_COLUMN_COLOR = Color(255, 80, 80)  # красный — внимание
 NON_VIABLE_STYLE_NAME = "RF_NonViable"
 NON_VIABLE_COLOR = Color(255, 50, 0)  # ярко-красный — немонтируемые ячейки
 
-# Минимальный порог, если стрингер не найден (мм)
-_DEFAULT_COL_CLEARANCE_MM = 30.0
-
+# Compatibility aliases kept for non-Revit tests and legacy imports.
+_DEFAULT_COL_CLEARANCE_MM = DEFAULT_STRINGER_CLEARANCE_MM
+_MIN_SEG_LEN = MIN_SEGMENT_LENGTH_FT
+_MARKER_ARM = GRID_MARKER_ARM_FT
+_MARKER_RING_HALF = GRID_MARKER_RING_HALF_FT
+_INTERNAL_TO_MM = MM_PER_FOOT
+_SCALE = CLIPPER_SCALE
 
 def _get_stringer_clearance_mm():
     """Читает макс. ширину профиля стрингера (мм) для near-edge подсветки."""
     doc = get_doc()
     if not doc:
-        return _DEFAULT_COL_CLEARANCE_MM
+        return DEFAULT_STRINGER_CLEARANCE_MM
 
     clearance = 0.0
     for fam in FilteredElementCollector(doc).OfClass(Family):
-        if fam.Name == "RF_Stringer":
+        if fam.Name == RFFamilies.STRINGER:
             for sid in fam.GetFamilySymbolIds():
                 sym = doc.GetElement(sid)
                 if sym:
-                    pw = get_double_param(sym, "RF_Profile_Width")
+                    pw = get_double_param(sym, P.PROFILE_WIDTH)
                     if pw:
-                        pw_mm = pw * _INTERNAL_TO_MM
+                        pw_mm = pw * MM_PER_FOOT
                         if pw_mm > clearance:
                             clearance = pw_mm
             break
-    return clearance if clearance > 0 else _DEFAULT_COL_CLEARANCE_MM
-
-
-# Минимальная длина отрезка (в футах) — короче не рисуем
-_MIN_SEG_LEN = 0.005  # ~1.5 мм
-# Размер маркера базовой точки (в футах)
-_MARKER_ARM = 0.45  # ~137 мм
-_MARKER_RING_HALF = 0.18  # ~55 мм
-
-_INTERNAL_TO_MM = 304.8
-_SCALE = 1000.0  # мм → clipper-единицы
+    return clearance if clearance > 0 else DEFAULT_STRINGER_CLEARANCE_MM
 
 
 # ---------------------------------------------------------------------------
@@ -79,12 +83,12 @@ _SCALE = 1000.0  # мм → clipper-единицы
 
 def _internal_to_clipper(val):
     """internal (feet) → clipper int64 units."""
-    return int(round(val * _INTERNAL_TO_MM * _SCALE))
+    return int(round(val * MM_PER_FOOT * CLIPPER_SCALE))
 
 
 def _clipper_to_internal(val):
     """clipper int64 units → internal (feet)."""
-    return float(val) / _SCALE / _INTERNAL_TO_MM
+    return float(val) / CLIPPER_SCALE / MM_PER_FOOT
 
 
 def _build_clip_paths(floor):
@@ -166,7 +170,7 @@ def _clip_line_segments(x0, y0, x1, y1, clip_paths):
         by = _clipper_to_internal(p1.Y)
         # Фильтр слишком коротких
         length = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
-        if length >= _MIN_SEG_LEN:
+        if length >= MIN_SEGMENT_LENGTH_FT:
             segments.append(((ax, ay), (bx, by)))
 
     return segments
@@ -199,11 +203,95 @@ def _collect_styled_curve_ids(view, style_id):
                 continue
             ls = curve_el.LineStyle
             if ls and ls.Id == style_id:
-                ids.append(curve_el.Id.IntegerValue)
+                ids.append(get_id_value(curve_el))
         except Exception:
             pass
 
     return ids
+
+
+def _curve_inside_xy_box(curve_el, min_x, min_y, max_x, max_y):
+    """Check whether a detail curve lies inside an XY box."""
+    try:
+        curve = getattr(curve_el, "GeometryCurve", None)
+        if curve is None:
+            loc = getattr(curve_el, "Location", None)
+            curve = getattr(loc, "Curve", None) if loc is not None else None
+        if curve is None:
+            return False
+
+        p0 = curve.GetEndPoint(0)
+        p1 = curve.GetEndPoint(1)
+        xs = (p0.X, p1.X)
+        ys = (p0.Y, p1.Y)
+        return (
+            min(xs) >= min_x
+            and max(xs) <= max_x
+            and min(ys) >= min_y
+            and max(ys) <= max_y
+        )
+    except Exception:
+        return False
+
+
+def _collect_marker_ids_near_points(view, points, radius):
+    """Collect stale base-marker curve ids near candidate base points."""
+    doc = get_doc()
+    if not doc or not points:
+        return []
+
+    style_id = get_line_style_id(doc, BASE_MARKER_STYLE_NAME)
+    if not style_id:
+        return []
+
+    ids = []
+    seen_ids = set()
+    collector = FilteredElementCollector(doc, view.Id).OfClass(CurveElement)
+    for curve_el in collector:
+        try:
+            if not curve_el.ViewSpecific:
+                continue
+            ls = curve_el.LineStyle
+            if not ls or ls.Id != style_id:
+                continue
+        except Exception:
+            continue
+
+        for x_val, y_val in points:
+            if _curve_inside_xy_box(
+                curve_el,
+                x_val - radius,
+                y_val - radius,
+                x_val + radius,
+                y_val + radius,
+            ):
+                int_id = get_id_value(curve_el)
+                if int_id not in seen_ids:
+                    seen_ids.add(int_id)
+                    ids.append(int_id)
+                break
+
+    return ids
+
+
+def _collect_owned_grid_ids(floor):
+    """Возвращает уникальные ID элементов сетки, принадлежащих выбранному полу.
+
+    Важно: redraw/cleanup не должны удалять все RF-линии на виде по стилю.
+    Иначе перерисовка одной зоны может снести сетку соседней зоны в том же плане.
+    """
+    ids_to_delete = []
+    seen_ids = set()
+
+    for param_name in (P.GRID_LINES_ID, P.BASE_MARKER_ID):
+        ids = parse_ids_from_string(get_string_param(floor, param_name))
+        for int_id in ids:
+            if int_id in seen_ids:
+                continue
+            seen_ids.add(int_id)
+            ids_to_delete.append(int_id)
+
+    return ids_to_delete
 
 
 def _collect_contour_curves(floor):
@@ -213,7 +301,7 @@ def _collect_contour_curves(floor):
     от состояния документа внутри транзакции.
     """
     old_contour_ids = parse_ids_from_string(
-        get_string_param(floor, "RF_Contour_Lines_ID")
+        get_string_param(floor, P.CONTOUR_LINES_ID)
     )
     if not old_contour_ids:
         return [], []
@@ -268,43 +356,48 @@ def _recreate_contour_on_top(floor, view, old_contour_ids, curves, update_style=
         try:
             dc = doc.Create.NewDetailCurve(view, crv)
             dc.LineStyle = contour_style
-            new_ids.append(str(dc.Id.Value))
+            new_ids.append(str(get_id_value(dc)))
         except Exception:
             pass
 
     if new_ids:
-        set_string_param(floor, "RF_Contour_Lines_ID", ";".join(new_ids))
+        set_string_param(floor, P.CONTOUR_LINES_ID, ";".join(new_ids))
 
     return len(new_ids)
 
 
 def redraw_grid_for_floor(
-    floor, view, transaction_name, update_style=False, non_viable_cells=None
+    floor,
+    view,
+    transaction_name,
+    update_style=False,
+    non_viable_cells=None,
+    cleanup_marker_points=None,
 ):
     doc = get_doc()
     if not doc:
         raise Exception("Не удалось получить активный документ Revit.")
 
-    step_x = get_double_param(floor, "RF_Step_X")
-    step_y = get_double_param(floor, "RF_Step_Y")
-    base_x_raw = get_double_param(floor, "RF_Base_X")
-    base_y_raw = get_double_param(floor, "RF_Base_Y")
-    shift_x = get_double_param(floor, "RF_Offset_X")
-    shift_y = get_double_param(floor, "RF_Offset_Y")
+    step_x = get_double_param(floor, P.STEP_X)
+    step_y = get_double_param(floor, P.STEP_Y)
+    base_x_raw = get_double_param(floor, P.BASE_X)
+    base_y_raw = get_double_param(floor, P.BASE_Y)
+    shift_x = get_double_param(floor, P.OFFSET_X)
+    shift_y = get_double_param(floor, P.OFFSET_Y)
 
     missing = []
     if step_x is None:
-        missing.append("RF_Step_X")
+        missing.append(P.STEP_X)
     if step_y is None:
-        missing.append("RF_Step_Y")
+        missing.append(P.STEP_Y)
     if base_x_raw is None:
-        missing.append("RF_Base_X")
+        missing.append(P.BASE_X)
     if base_y_raw is None:
-        missing.append("RF_Base_Y")
+        missing.append(P.BASE_Y)
     if shift_x is None:
-        missing.append("RF_Offset_X")
+        missing.append(P.OFFSET_X)
     if shift_y is None:
-        missing.append("RF_Offset_Y")
+        missing.append(P.OFFSET_Y)
 
     if missing:
         raise Exception(
@@ -344,36 +437,21 @@ def redraw_grid_for_floor(
     if not x_positions and not y_positions:
         raise Exception("Не удалось построить позиции линий сетки.")
 
-    # Собираем ID для удаления: сохранённые + fallback по стилю
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Grid_Lines_ID"))
-    old_marker_ids = parse_ids_from_string(get_string_param(floor, "RF_Base_Marker_ID"))
-    style_id = get_line_style_id(doc, GRID_LINE_STYLE_NAME)
-    styled_ids = _collect_styled_curve_ids(view, style_id) if style_id else []
-    near_col_style_id = get_line_style_id(doc, NEAR_COLUMN_STYLE_NAME)
-    near_col_styled_ids = (
-        _collect_styled_curve_ids(view, near_col_style_id) if near_col_style_id else []
-    )
-    marker_style_id = get_line_style_id(doc, BASE_MARKER_STYLE_NAME)
-    marker_styled_ids = (
-        _collect_styled_curve_ids(view, marker_style_id) if marker_style_id else []
-    )
-    nv_style_id = get_line_style_id(doc, NON_VIABLE_STYLE_NAME)
-    nv_styled_ids = _collect_styled_curve_ids(view, nv_style_id) if nv_style_id else []
-
-    ids_to_delete = []
-    seen_ids = set()
-    for int_id in (
-        old_ids
-        + styled_ids
-        + near_col_styled_ids
-        + old_marker_ids
-        + marker_styled_ids
-        + nv_styled_ids
-    ):
-        if int_id in seen_ids:
-            continue
-        seen_ids.add(int_id)
-        ids_to_delete.append(int_id)
+    # Удаляем только элементы, явно привязанные к выбранному полу через RF_*_ID.
+    # Broad fallback по стилю намеренно не используем, чтобы не затрагивать соседние зоны.
+    ids_to_delete = _collect_owned_grid_ids(floor)
+    if cleanup_marker_points:
+        marker_cleanup_ids = _collect_marker_ids_near_points(
+            view,
+            cleanup_marker_points,
+            GRID_MARKER_ARM_FT * 3.0,
+        )
+        if marker_cleanup_ids:
+            seen_ids = set(ids_to_delete)
+            for int_id in marker_cleanup_ids:
+                if int_id not in seen_ids:
+                    seen_ids.add(int_id)
+                    ids_to_delete.append(int_id)
 
     # Читаем всю геометрию ДО транзакции — внутри транзакции ссылки
     # на геометрию элементов могут стать невалидными ("referenced object").
@@ -414,7 +492,7 @@ def redraw_grid_for_floor(
             )
 
         # Проверка: линия сетки рядом с ребром колонны?
-        _col_clearance = _get_stringer_clearance_mm() / _INTERNAL_TO_MM  # мм → feet
+        _col_clearance = _get_stringer_clearance_mm() / MM_PER_FOOT  # мм → feet
 
         def _is_near_column_x(x_val):
             for hmin_x, _hmin_y, hmax_x, _hmax_y in hole_edge_coords:
@@ -448,7 +526,7 @@ def redraw_grid_for_floor(
                 line = Line.CreateBound(XYZ(ax, ay, z0), XYZ(bx, by, z0))
                 dc = doc.Create.NewDetailCurve(view, line)
                 dc.LineStyle = near_col_style if is_near else grid_style
-                created_ids.append(str(dc.Id.Value))
+                created_ids.append(str(get_id_value(dc)))
 
         for y in y_positions:
             is_near = near_col_style and _is_near_column_y(y)
@@ -462,11 +540,11 @@ def redraw_grid_for_floor(
                 line = Line.CreateBound(XYZ(ax, ay, z0), XYZ(bx, by, z0))
                 dc = doc.Create.NewDetailCurve(view, line)
                 dc.LineStyle = near_col_style if is_near else grid_style
-                created_ids.append(str(dc.Id.Value))
+                created_ids.append(str(get_id_value(dc)))
 
         # Крестик точки начала раскладки (только если база в зоне bbox)
         marker_ids = []
-        marker_pad = _MARKER_ARM * 2
+        marker_pad = GRID_MARKER_ARM_FT * 2
         if (
             min_x - marker_pad <= base_x <= max_x + marker_pad
             and min_y - marker_pad <= base_y <= max_y + marker_pad
@@ -481,25 +559,25 @@ def redraw_grid_for_floor(
 
             # Контрастная, но компактная мишень: + и квадратная рамка.
             m_line_h = Line.CreateBound(
-                XYZ(base_x - _MARKER_ARM, base_y, z0),
-                XYZ(base_x + _MARKER_ARM, base_y, z0),
+                XYZ(base_x - GRID_MARKER_ARM_FT, base_y, z0),
+                XYZ(base_x + GRID_MARKER_ARM_FT, base_y, z0),
             )
             dc_h = doc.Create.NewDetailCurve(view, m_line_h)
             dc_h.LineStyle = marker_style
-            marker_ids.append(str(dc_h.Id.Value))
+            marker_ids.append(str(get_id_value(dc_h)))
 
             m_line_v = Line.CreateBound(
-                XYZ(base_x, base_y - _MARKER_ARM, z0),
-                XYZ(base_x, base_y + _MARKER_ARM, z0),
+                XYZ(base_x, base_y - GRID_MARKER_ARM_FT, z0),
+                XYZ(base_x, base_y + GRID_MARKER_ARM_FT, z0),
             )
             dc_v = doc.Create.NewDetailCurve(view, m_line_v)
             dc_v.LineStyle = marker_style
-            marker_ids.append(str(dc_v.Id.Value))
+            marker_ids.append(str(get_id_value(dc_v)))
 
-            rx0 = base_x - _MARKER_RING_HALF
-            rx1 = base_x + _MARKER_RING_HALF
-            ry0 = base_y - _MARKER_RING_HALF
-            ry1 = base_y + _MARKER_RING_HALF
+            rx0 = base_x - GRID_MARKER_RING_HALF_FT
+            rx1 = base_x + GRID_MARKER_RING_HALF_FT
+            ry0 = base_y - GRID_MARKER_RING_HALF_FT
+            ry1 = base_y + GRID_MARKER_RING_HALF_FT
             ring_lines = [
                 Line.CreateBound(XYZ(rx0, ry0, z0), XYZ(rx1, ry0, z0)),
                 Line.CreateBound(XYZ(rx1, ry0, z0), XYZ(rx1, ry1, z0)),
@@ -509,7 +587,7 @@ def redraw_grid_for_floor(
             for ring in ring_lines:
                 dc_r = doc.Create.NewDetailCurve(view, ring)
                 dc_r.LineStyle = marker_style
-                marker_ids.append(str(dc_r.Id.Value))
+                marker_ids.append(str(get_id_value(dc_r)))
 
         # X-кресты на немонтируемых ячейках
         nv_count = 0
@@ -526,29 +604,29 @@ def redraw_grid_for_floor(
                     d1 = Line.CreateBound(XYZ(cx0, cy0, z0), XYZ(cx1, cy1, z0))
                     dc1 = doc.Create.NewDetailCurve(view, d1)
                     dc1.LineStyle = nv_style
-                    created_ids.append(str(dc1.Id.Value))
+                    created_ids.append(str(get_id_value(dc1)))
                     d2 = Line.CreateBound(XYZ(cx0, cy1, z0), XYZ(cx1, cy0, z0))
                     dc2 = doc.Create.NewDetailCurve(view, d2)
                     dc2.LineStyle = nv_style
-                    created_ids.append(str(dc2.Id.Value))
+                    created_ids.append(str(get_id_value(dc2)))
                     nv_count += 1
                 except Exception:
                     pass
 
         ids_string = ";".join(created_ids)
-        ok = set_string_param(floor, "RF_Grid_Lines_ID", ids_string)
+        ok = set_string_param(floor, P.GRID_LINES_ID, ids_string)
         if not ok:
-            raise Exception("Не удалось записать RF_Grid_Lines_ID")
+            raise Exception("Не удалось записать {}".format(P.GRID_LINES_ID))
 
         if marker_ids:
             marker_ids_string = ";".join(marker_ids)
-            ok_marker = set_string_param(floor, "RF_Base_Marker_ID", marker_ids_string)
+            ok_marker = set_string_param(floor, P.BASE_MARKER_ID, marker_ids_string)
             if not ok_marker:
-                raise Exception("Не удалось записать RF_Base_Marker_ID")
+                raise Exception("Не удалось записать {}".format(P.BASE_MARKER_ID))
         else:
-            ok_marker = set_string_param(floor, "RF_Base_Marker_ID", "")
+            ok_marker = set_string_param(floor, P.BASE_MARKER_ID, "")
             if not ok_marker:
-                raise Exception("Не удалось очистить RF_Base_Marker_ID")
+                raise Exception("Не удалось очистить {}".format(P.BASE_MARKER_ID))
 
         # Пересоздать контурные линии последними — чтобы они были поверх сетки
         contour_recreated = _recreate_contour_on_top(

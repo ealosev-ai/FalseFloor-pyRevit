@@ -73,6 +73,11 @@ def _install_stubs():
         floor_common.get_double_param = lambda obj, name: getattr(
             obj, "_params", {}
         ).get(name)
+        floor_common.get_id_value = lambda obj: (
+            getattr(getattr(obj, "Id", obj), "IntegerValue", None)
+            if getattr(getattr(obj, "Id", obj), "IntegerValue", None) is not None
+            else getattr(getattr(obj, "Id", obj), "Value")
+        )
         floor_common.get_line_style_id = lambda *_a, **_k: None
         floor_common.get_or_create_line_style = lambda *_a, **_k: object()
         floor_common.get_string_param = lambda *_a, **_k: ""
@@ -174,6 +179,109 @@ def test_collect_styled_curve_ids_filters_correctly(monkeypatch):
 
     ids = mod._collect_styled_curve_ids(type("_V", (), {"Id": 1})(), style_id=10)
     assert ids == [1]
+
+
+def test_collect_marker_ids_near_points_filters_to_base_area(monkeypatch):
+    mod = _import_floor_grid()
+
+    class _Pt:
+        def __init__(self, x, y, z=0):
+            self.X = x
+            self.Y = y
+            self.Z = z
+
+    class _Curve:
+        def __init__(self, eid, style_id, p0, p1):
+            self.ViewSpecific = True
+            self.LineStyle = type("_Style", (), {"Id": style_id})()
+            self.Id = type("_Id", (), {"IntegerValue": eid})()
+            self.GeometryCurve = type(
+                "_Geom",
+                (),
+                {"GetEndPoint": lambda self, idx: p0 if idx == 0 else p1},
+            )()
+
+    curves = [
+        _Curve(1, 10, _Pt(0.0, 0.0), _Pt(0.5, 0.0)),
+        _Curve(2, 10, _Pt(10.0, 10.0), _Pt(10.5, 10.0)),
+        _Curve(3, 99, _Pt(0.0, 0.0), _Pt(0.5, 0.0)),
+    ]
+
+    class _Collector:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def OfClass(self, *_args, **_kwargs):
+            return curves
+
+    monkeypatch.setattr(mod, "FilteredElementCollector", _Collector)
+    monkeypatch.setattr(mod, "get_doc", lambda: object())
+    monkeypatch.setattr(mod, "get_line_style_id", lambda *_a, **_k: 10)
+
+    ids = mod._collect_marker_ids_near_points(
+        type("_V", (), {"Id": 1})(),
+        points=[(0.25, 0.0)],
+        radius=1.0,
+    )
+    assert ids == [1]
+
+
+def test_collect_marker_ids_near_points_supports_value_only_ids(monkeypatch):
+    mod = _import_floor_grid()
+
+    class _Pt:
+        def __init__(self, x, y, z=0):
+            self.X = x
+            self.Y = y
+            self.Z = z
+
+    class _Curve:
+        def __init__(self, eid, style_id, p0, p1):
+            self.ViewSpecific = True
+            self.LineStyle = type("_Style", (), {"Id": style_id})()
+            self.Id = type("_Id", (), {"Value": eid})()
+            self.GeometryCurve = type(
+                "_Geom",
+                (),
+                {"GetEndPoint": lambda self, idx: p0 if idx == 0 else p1},
+            )()
+
+    curves = [_Curve(11, 10, _Pt(0.0, 0.0), _Pt(0.5, 0.0))]
+
+    class _Collector:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def OfClass(self, *_args, **_kwargs):
+            return curves
+
+    monkeypatch.setattr(mod, "FilteredElementCollector", _Collector)
+    monkeypatch.setattr(mod, "get_doc", lambda: object())
+    monkeypatch.setattr(mod, "get_line_style_id", lambda *_a, **_k: 10)
+
+    ids = mod._collect_marker_ids_near_points(
+        type("_V", (), {"Id": 1})(),
+        points=[(0.25, 0.0)],
+        radius=1.0,
+    )
+    assert ids == [11]
+
+
+def test_collect_owned_grid_ids_uses_only_stored_floor_params(monkeypatch):
+    mod = _import_floor_grid()
+
+    params = {
+        "RF_Grid_Lines_ID": "1;1;4;7",
+        "RF_Base_Marker_ID": "7;9",
+    }
+
+    monkeypatch.setattr(mod, "get_string_param", lambda _f, name: params.get(name, ""))
+    monkeypatch.setattr(
+        mod, "parse_ids_from_string", lambda s: [int(x) for x in s.split(";") if x]
+    )
+
+    ids = mod._collect_owned_grid_ids(object())
+    assert ids == [1, 4, 7, 9]
 
 
 def test_get_stringer_clearance_max_and_default(monkeypatch):
@@ -358,22 +466,15 @@ def test_redraw_grid_for_floor_main_flow(monkeypatch):
     monkeypatch.setattr(
         mod,
         "get_string_param",
-        lambda _f, name: "1;1;4" if name == "RF_Grid_Lines_ID" else "6",
+        lambda _f, name: "1;1" if name == "RF_Grid_Lines_ID" else "6",
     )
     monkeypatch.setattr(
         mod, "parse_ids_from_string", lambda s: [int(x) for x in s.split(";") if x]
     )
-
-    style_ids = {
-        mod.GRID_LINE_STYLE_NAME: 11,
-        mod.NEAR_COLUMN_STYLE_NAME: 12,
-        mod.BASE_MARKER_STYLE_NAME: 13,
-    }
-    monkeypatch.setattr(mod, "get_line_style_id", lambda _d, name: style_ids.get(name))
     monkeypatch.setattr(
         mod,
         "_collect_styled_curve_ids",
-        lambda _view, sid: {11: [4], 12: [7], 13: [8]}.get(sid, []),
+        lambda *_a, **_k: pytest.fail("style fallback must not be used in redraw"),
     )
     monkeypatch.setattr(mod, "_build_clip_paths", lambda _f: (None, []))
     monkeypatch.setattr(mod, "_collect_contour_curves", lambda _f: ([], []))
@@ -386,13 +487,13 @@ def test_redraw_grid_for_floor_main_flow(monkeypatch):
     )
 
     result = mod.redraw_grid_for_floor(floor, _View(), "tx")
-    assert result["deleted_count"] == 3
+    assert result["deleted_count"] == 2
     assert result["created_count"] == 4
     assert result["marker_count"] == 6
     assert result["contour_recreated"] == 2
     assert stored["RF_Grid_Lines_ID"]
     assert stored["RF_Base_Marker_ID"]
-    assert fake_doc.deleted == [1, 4, 6]
+    assert fake_doc.deleted == [1, 6]
 
 
 def test_redraw_grid_for_floor_with_holes_and_empty_marker(monkeypatch):
@@ -451,7 +552,6 @@ def test_redraw_grid_for_floor_with_holes_and_empty_marker(monkeypatch):
     monkeypatch.setattr(mod, "build_positions", lambda *_a, **_k: [1.0])
     monkeypatch.setattr(mod, "get_string_param", lambda *_a, **_k: "")
     monkeypatch.setattr(mod, "parse_ids_from_string", lambda _s: [])
-    monkeypatch.setattr(mod, "get_line_style_id", lambda *_a, **_k: None)
     monkeypatch.setattr(mod, "get_or_create_line_style", lambda *_a, **_k: "STYLE")
     monkeypatch.setattr(mod, "_get_stringer_clearance_mm", lambda: 30.0)
     monkeypatch.setattr(
@@ -472,3 +572,90 @@ def test_redraw_grid_for_floor_with_holes_and_empty_marker(monkeypatch):
     assert result["created_count"] == 2
     assert result["marker_count"] == 0
     assert stored["RF_Base_Marker_ID"] == ""
+
+
+def test_redraw_grid_for_floor_merges_cleanup_marker_ids(monkeypatch):
+    mod = _import_floor_grid()
+
+    class _Tx:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _Created:
+        def __init__(self, cid):
+            self.Id = type("_Id", (), {"Value": cid})()
+            self.LineStyle = None
+
+    class _Create:
+        def __init__(self):
+            self.items = []
+
+        def NewDetailCurve(self, _view, _line):
+            cid = 400 + len(self.items)
+            obj = _Created(cid)
+            self.items.append(obj)
+            return obj
+
+    class _Doc:
+        def __init__(self):
+            self.Create = _Create()
+            self.deleted = []
+
+        def GetElement(self, el_id):
+            return object() if el_id.IntegerValue in (1, 9) else None
+
+        def Delete(self, el_id):
+            self.deleted.append(el_id.IntegerValue)
+
+    params = {
+        "RF_Step_X": 2.0,
+        "RF_Step_Y": 2.0,
+        "RF_Base_X": 5.0,
+        "RF_Base_Y": 7.0,
+        "RF_Offset_X": 0.0,
+        "RF_Offset_Y": 0.0,
+    }
+    stored = {}
+    fake_doc = _Doc()
+
+    monkeypatch.setattr(mod, "get_doc", lambda: fake_doc)
+    monkeypatch.setattr(mod.revit, "Transaction", _Tx)
+    monkeypatch.setattr(mod, "get_double_param", lambda _f, name: params.get(name))
+    monkeypatch.setattr(
+        mod, "get_bbox_xy", lambda *_a, **_k: (0.0, 0.0, 10.0, 10.0, 3.0, 4.0)
+    )
+    monkeypatch.setattr(mod, "build_positions", lambda *_a, **_k: [1.0])
+    monkeypatch.setattr(
+        mod,
+        "get_string_param",
+        lambda _f, name: "1" if name == "RF_Grid_Lines_ID" else "",
+    )
+    monkeypatch.setattr(
+        mod, "parse_ids_from_string", lambda s: [int(x) for x in s.split(";") if x]
+    )
+    monkeypatch.setattr(mod, "_build_clip_paths", lambda _f: (None, []))
+    monkeypatch.setattr(mod, "_collect_contour_curves", lambda _f: ([], []))
+    monkeypatch.setattr(mod, "get_or_create_line_style", lambda *_a, **_k: "STYLE")
+    monkeypatch.setattr(mod, "_recreate_contour_on_top", lambda *_a, **_k: 0)
+    monkeypatch.setattr(mod, "_collect_marker_ids_near_points", lambda *_a, **_k: [9])
+    monkeypatch.setattr(
+        mod,
+        "set_string_param",
+        lambda _f, name, value: stored.update({name: value}) or True,
+    )
+
+    result = mod.redraw_grid_for_floor(
+        object(),
+        type("_View", (), {"Id": 1})(),
+        "tx",
+        cleanup_marker_points=[(5.0, 7.0), (6.0, 7.0)],
+    )
+
+    assert result["deleted_count"] == 2
+    assert fake_doc.deleted == [1, 9]

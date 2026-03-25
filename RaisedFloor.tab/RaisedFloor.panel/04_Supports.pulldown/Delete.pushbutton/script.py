@@ -12,6 +12,7 @@ from floor_common import (  # type: ignore
     set_string_param,
 )
 from floor_i18n import tr  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 from pyrevit import forms, revit  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
@@ -46,7 +47,7 @@ try:
     if not floor:
         raise Exception(tr("source_floor_not_found"))
 
-    old_ids = parse_ids_from_string(get_string_param(floor, "RF_Supports_ID"))
+    old_ids = parse_ids_from_string(get_string_param(floor, P.SUPPORTS_ID))
     if not old_ids:
         forms.alert(tr("del_not_found_supports"), title=TITLE)
         raise _Cancel()
@@ -70,7 +71,7 @@ try:
                     deleted += 1
             except Exception:
                 pass
-        set_string_param(floor, "RF_Supports_ID", "")
+        set_string_param(floor, P.SUPPORTS_ID, "")
 
     forms.alert(tr("del_done_supports", count=deleted), title=TITLE)
 

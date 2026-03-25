@@ -10,6 +10,10 @@ on:
       - "lib/**/*.py"
       - "tests/**/*.py"
       - "RaisedFloor.tab/**/*.py"
+      - "RaisedFloor.tab/**/*.yaml"
+      - "RaisedFloor.tab/**/*.html"
+      - "RaisedFloor.tab/**/*.htm"
+      - "Families/**/*.rfa"
       - "requirements.txt"
       - "pytest.ini"
       - ".github/workflows/**/*.yml"
@@ -20,8 +24,13 @@ on:
       - "lib/**/*.py"
       - "tests/**/*.py"
       - "RaisedFloor.tab/**/*.py"
+      - "RaisedFloor.tab/**/*.yaml"
+      - "RaisedFloor.tab/**/*.html"
+      - "RaisedFloor.tab/**/*.htm"
+      - "Families/**/*.rfa"
       - "requirements.txt"
       - "pytest.ini"
+      - ".github/workflows/**/*.yml"
 
   # Allow manual workflow runs
   workflow_dispatch:
@@ -34,16 +43,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -76,10 +85,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -106,7 +115,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Create release archive
         run: |
@@ -127,7 +136,7 @@ jobs:
           }
 
           # Dev-only test runner button should not ship in production zip.
-          $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown"
+          $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown11"
           if (Test-Path $testsPanel) {
             Remove-Item $testsPanel -Recurse -Force
           }
@@ -151,7 +160,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check README exists
         run: |
