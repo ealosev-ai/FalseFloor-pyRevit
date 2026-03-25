@@ -8,6 +8,7 @@ from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
     get_double_param,
+    get_id_value,
     get_source_floor,
     set_double_param,
 )
@@ -24,6 +25,7 @@ from floor_ui import (  # type: ignore
 )
 from pyrevit import forms, revit  # type: ignore
 from rf_param_schema import RFFamilies, RFParams as P  # type: ignore
+from rf_reporting import ScriptReporter  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 
 
@@ -31,7 +33,22 @@ class _Cancel(Exception):
     pass
 
 
+def _append_log_path(text, reporter):
+    if reporter and reporter.log_path:
+        return text + "\n\nLog: {}".format(reporter.log_path)
+    return text
+
+
+reporter = None
+reporter_done = False
+
 try:
+    reporter = ScriptReporter.from_pyrevit(
+        title=TITLE_SHIFT,
+        log_stem="optimize_layout",
+    )
+    reporter.stage("Optimize Layout")
+
     doc = get_doc()
     uidoc = get_uidoc()
     view = get_active_view()
@@ -39,7 +56,11 @@ try:
     if not doc or not uidoc:
         raise Exception(tr("source_floor_not_found"))
 
+    if view is not None:
+        reporter.info("Active view: {}".format(getattr(view, "Name", "<unnamed>")))
+
     if not isinstance(view, ViewPlan):
+        reporter.warning("Active view is not a plan view")
         forms.alert(
             tr("open_plan_shift"),
             title=TITLE_SHIFT,
@@ -62,11 +83,14 @@ try:
     if not floor:
         raise Exception(tr("source_floor_not_found"))
 
+    reporter.info("Selected floor id: {}".format(get_id_value(floor.Id)))
+
     # Запоминаем текущее смещение до оптимизации
     cur_sx = get_double_param(floor, P.OFFSET_X)
     cur_sy = get_double_param(floor, P.OFFSET_Y)
     cur_sx_mm = round(internal_to_mm(cur_sx)) if cur_sx else 0.0
     cur_sy_mm = round(internal_to_mm(cur_sy)) if cur_sy else 0.0
+    reporter.info("Current shift: X={} mm, Y={} mm".format(cur_sx_mm, cur_sy_mm))
 
     # Параметры плитки и высоты для отображения в отчёте
     step_x_raw = get_double_param(floor, P.STEP_X)
@@ -91,8 +115,14 @@ try:
                         if pw_mm > _stringer_clearance_mm:
                             _stringer_clearance_mm = pw_mm
             break
+    reporter.info(
+        "Stringer clearance for edge checks: {} mm".format(
+            round(_stringer_clearance_mm, 1)
+        )
+    )
 
     _t0 = time.time()
+    reporter.stage("Evaluate Shift")
 
     search = evaluate_floor_shift(
         doc,
@@ -103,6 +133,14 @@ try:
     _elapsed = time.time() - _t0
 
     best = search["best"]
+    reporter.info(
+        "Best shift: X={} mm, Y={} mm".format(
+            best["shift_x_mm"],
+            best["shift_y_mm"],
+        )
+    )
+    reporter.info("Variants checked: {}".format(search.get("total_count", "?")))
+    reporter.info("Evaluation time: {:.1f}s".format(_elapsed))
 
     lines = []
 
@@ -157,6 +195,9 @@ try:
     # --- Поиск ---
     total_var = search.get("total_count", "?")
     lines.append(tr("rpt_search", count=total_var, sec=_elapsed))
+    reporter.stage("Preview")
+    for line in lines:
+        reporter.info(line)
 
     apply_answer = forms.alert(
         "\n".join(lines) + "\n\n" + tr("shift_apply_prompt"),
@@ -166,14 +207,22 @@ try:
     )
 
     if not apply_answer:
+        reporter.warning("User declined shift application")
         raise _Cancel()
 
+    reporter.stage("Apply Shift")
     with revit.Transaction(tr("tx_apply_shift")):
         ok_x = set_double_param(floor, P.OFFSET_X, best["shift_x_internal"])
         ok_y = set_double_param(floor, P.OFFSET_Y, best["shift_y_internal"])
 
         if not ok_x or not ok_y:
             raise Exception(tr("shift_write_failed"))
+    reporter.info(
+        "Shift written: X={} mm, Y={} mm".format(
+            best["shift_x_mm"],
+            best["shift_y_mm"],
+        )
+    )
 
     cleanup_marker_points = [
         (base_x_raw + (cur_sx or 0.0), base_y_raw + (cur_sy or 0.0)),
@@ -183,6 +232,7 @@ try:
         ),
     ]
 
+    reporter.stage("Redraw Grid")
     grid_result = redraw_grid_for_floor(
         floor,
         view,
@@ -190,6 +240,14 @@ try:
         non_viable_cells=best.get("non_viable_cells"),
         cleanup_marker_points=cleanup_marker_points,
     )
+    if grid_result:
+        reporter.info(
+            "Grid redrawn: deleted={deleted}, created={created}, near_columns={near}".format(
+                deleted=grid_result["deleted_count"],
+                created=grid_result["created_count"],
+                near=grid_result.get("near_col_count", 0),
+            )
+        )
 
     done = []
     done.append(tr("rpt_done_title"))
@@ -226,9 +284,26 @@ try:
             )
         )
 
-    forms.alert("\n".join(done), title=TITLE_SHIFT)
+    reporter.stage("Result")
+    for line in done:
+        reporter.info(line)
+    reporter.finish()
+    reporter_done = True
+
+    forms.alert(_append_log_path("\n".join(done), reporter), title=TITLE_SHIFT)
 
 except _Cancel:
-    forms.alert(tr("operation_cancelled"), title=TITLE_SHIFT)
+    if reporter and not reporter_done:
+        reporter.warning("Operation cancelled")
+        reporter.finish()
+        reporter_done = True
+    forms.alert(_append_log_path(tr("operation_cancelled"), reporter), title=TITLE_SHIFT)
 except Exception as ex:
-    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_SHIFT)
+    if reporter and not reporter_done:
+        reporter.error(str(ex))
+        reporter.finish()
+        reporter_done = True
+    forms.alert(
+        _append_log_path(tr("error_fmt", error=str(ex)), reporter),
+        title=TITLE_SHIFT,
+    )

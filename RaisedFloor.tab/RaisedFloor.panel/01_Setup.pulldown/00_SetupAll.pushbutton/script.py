@@ -27,10 +27,21 @@ from floor_i18n import tr  # type: ignore
 from rf_param_schema import RFParams as P  # type: ignore
 from revit_context import get_active_view, get_doc, get_uidoc  # type: ignore
 from pyrevit import forms, revit  # type: ignore
+from rf_reporting import ScriptReporter  # type: ignore
 
 TITLE_PREPARE_ALL = tr("prepare_all_title")
 CONTOUR_STYLE_NAME = "RF_Contour"
 CONTOUR_COLOR = Color(0, 255, 0)
+
+
+def _append_log_path(text, reporter):
+    if reporter and reporter.log_path:
+        return text + "\n\nLog: {}".format(reporter.log_path)
+    return text
+
+
+reporter = None
+reporter_done = False
 
 
 def mm_to_internal(mm_value):
@@ -173,6 +184,12 @@ def rebuild_contour_for_floor(floor_id_int):
 
 
 try:
+    reporter = ScriptReporter.from_pyrevit(
+        title=TITLE_PREPARE_ALL,
+        log_stem="setup_all",
+    )
+    reporter.stage("Prepare All")
+
     doc = get_doc()
     uidoc = get_uidoc()
     view = get_active_view()
@@ -180,7 +197,11 @@ try:
     if not doc or not uidoc:
         raise Exception(tr("source_floor_not_found"))
 
+    if view is not None:
+        reporter.info("Active view: {}".format(getattr(view, "Name", "<unnamed>")))
+
     if not isinstance(view, ViewPlan):
+        reporter.warning("Active view is not a plan view")
         forms.alert(
             tr("prepare_all_open_plan"),
             title=TITLE_PREPARE_ALL,
@@ -197,16 +218,26 @@ try:
     floor = get_source_floor(picked_el)
 
     if not floor or not floor.Category:
+        reporter.warning("Selected element is invalid or has no category")
         forms.alert(tr("invalid_element"), title=TITLE_PREPARE_ALL)
         raise Exception("Invalid element")
 
     if get_id_value(floor.Category.Id) != int(BuiltInCategory.OST_Floors):
+        reporter.warning("Selected element is not a floor")
         forms.alert(tr("element_not_floor"), title=TITLE_PREPARE_ALL)
         raise Exception("Element is not a floor")
 
     floor_id_int = get_id_value(floor.Id)
+    reporter.info("Selected floor id: {}".format(floor_id_int))
 
     base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))
+    reporter.info(
+        "Base point: X={:.3f}, Y={:.3f}, Z={:.3f}".format(
+            base_point.X,
+            base_point.Y,
+            base_point.Z,
+        )
+    )
 
     step_x_mm = ask_mm_value(TITLE_PREPARE_ALL, tr("prompt_step_x"), 600)
     if step_x_mm is None:
@@ -224,7 +255,14 @@ try:
     if tile_thickness_mm is None:
         raise OperationCanceledException()
 
+    reporter.stage("Collected Inputs")
+    reporter.info("Step X: {} mm".format(step_x_mm))
+    reporter.info("Step Y: {} mm".format(step_y_mm))
+    reporter.info("Floor height: {} mm".format(height_mm))
+    reporter.info("Tile thickness: {} mm".format(tile_thickness_mm))
+
     missing_params = []
+    reporter.stage("Write Floor Parameters")
     with revit.Transaction(tr("tx_prepare_floor")):
         floor_for_write = _resolve_floor(floor_id_int)
         pairs = [
@@ -252,8 +290,19 @@ try:
         raise Exception(
             tr("prepare_all_write_failed", missing="\n- ".join(missing_params))
         )
+    reporter.info("Floor parameters written successfully")
 
+    reporter.stage("Rebuild Contour")
     contour_result = rebuild_contour_for_floor(floor_id_int)
+    reporter.info(
+        "Contour rebuilt: loops={loops}, deleted={deleted}, created={created}".format(
+            loops=contour_result["loop_count"],
+            deleted=contour_result["deleted_count"],
+            created=contour_result["created_count"],
+        )
+    )
+
+    reporter.stage("Redraw Grid")
     floor_for_grid = _resolve_floor(floor_id_int)
     grid_result = redraw_grid_for_floor(
         floor_for_grid,
@@ -261,26 +310,53 @@ try:
         tr("tx_redraw_grid"),
         update_style=True,
     )
+    reporter.info(
+        "Grid redrawn: deleted={deleted}, created={created}".format(
+            deleted=grid_result["deleted_count"],
+            created=grid_result["created_count"],
+        )
+    )
+
+    result_text = tr(
+        "prepare_all_done",
+        floor_id=floor_id_int,
+        step_x=step_x_mm,
+        step_y=step_y_mm,
+        height=height_mm,
+        tile_thickness=tile_thickness_mm,
+        loops=contour_result["loop_count"],
+        del_contour=contour_result["deleted_count"],
+        new_contour=contour_result["created_count"],
+        del_grid=grid_result["deleted_count"],
+        new_grid=grid_result["created_count"],
+    )
+    reporter.stage("Result")
+    for line in result_text.splitlines():
+        reporter.info(line)
+    reporter.finish()
+    reporter_done = True
 
     forms.alert(
-        tr(
-            "prepare_all_done",
-            floor_id=floor_id_int,
-            step_x=step_x_mm,
-            step_y=step_y_mm,
-            height=height_mm,
-            tile_thickness=tile_thickness_mm,
-            loops=contour_result["loop_count"],
-            del_contour=contour_result["deleted_count"],
-            new_contour=contour_result["created_count"],
-            del_grid=grid_result["deleted_count"],
-            new_grid=grid_result["created_count"],
-        ),
+        _append_log_path(result_text, reporter),
         title=TITLE_PREPARE_ALL,
     )
 
 except OperationCanceledException:
-    forms.alert(tr("operation_cancelled"), title=TITLE_PREPARE_ALL)
+    if reporter and not reporter_done:
+        reporter.warning("Operation cancelled")
+        reporter.finish()
+        reporter_done = True
+    forms.alert(
+        _append_log_path(tr("operation_cancelled"), reporter),
+        title=TITLE_PREPARE_ALL,
+    )
 
 except Exception as ex:
-    forms.alert(tr("error_fmt", error=str(ex)), title=TITLE_PREPARE_ALL)
+    if reporter and not reporter_done:
+        reporter.error(str(ex))
+        reporter.finish()
+        reporter_done = True
+    forms.alert(
+        _append_log_path(tr("error_fmt", error=str(ex)), reporter),
+        title=TITLE_PREPARE_ALL,
+    )

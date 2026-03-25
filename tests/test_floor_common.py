@@ -44,23 +44,23 @@ class TestBuildPositions:
 
     def test_zero_step(self):
         """Test handling of zero step value."""
-        positions = build_positions(
-            min_val=0,
-            max_val=100,
-            base_val=0,
-            step_val=0,
-        )
-        assert positions == []
+        with pytest.raises(ValueError):
+            build_positions(
+                min_val=0,
+                max_val=100,
+                base_val=0,
+                step_val=0,
+            )
 
     def test_negative_step(self):
         """Test handling of negative step value."""
-        positions = build_positions(
-            min_val=0,
-            max_val=100,
-            base_val=0,
-            step_val=-10,
-        )
-        assert positions == []
+        with pytest.raises(ValueError):
+            build_positions(
+                min_val=0,
+                max_val=100,
+                base_val=0,
+                step_val=-10,
+            )
 
     def test_with_padding(self):
         """Test position generation with padding."""

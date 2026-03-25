@@ -26,6 +26,25 @@ _LEGACY_MM_LENGTH_PARAM_LIMITS = {
 }
 
 
+def _require_finite_float(value, label):
+    try:
+        float_value = float(value)
+    except Exception:
+        raise ValueError(tr("invalid_number_named", name=label))
+
+    if not math.isfinite(float_value):
+        raise ValueError(tr("invalid_number_named", name=label))
+
+    return float_value
+
+
+def _require_positive_float(value, message, label):
+    float_value = _require_finite_float(value, label)
+    if float_value <= 0:
+        raise ValueError(message)
+    return float_value
+
+
 def build_positions(
     min_val,
     max_val,
@@ -34,11 +53,17 @@ def build_positions(
     end_padding_steps=0.0,
     end_tolerance=0.0,
 ):
-    import math
+    min_val = _require_finite_float(min_val, "min_val")
+    max_val = _require_finite_float(max_val, "max_val")
+    base_val = _require_finite_float(base_val, "base_val")
+    step_val = _require_positive_float(step_val, tr("step_positive"), "step_val")
+    end_padding_steps = _require_finite_float(end_padding_steps, "end_padding_steps")
+    end_tolerance = _require_finite_float(end_tolerance, "end_tolerance")
+
+    if max_val < min_val:
+        raise ValueError(tr("range_min_exceeds_max"))
 
     positions = []
-    if step_val <= 0:
-        return positions
 
     n_start = int(math.floor((min_val - base_val) / step_val))
     current = base_val + n_start * step_val
@@ -155,6 +180,16 @@ def read_floor_grid_params(floor):
     if missing:
         raise Exception(tr("params_read_error", missing="\n- ".join(missing)))
 
+    invalid = []
+    for name, value in list(params.items()):
+        try:
+            params[name] = _require_finite_float(value, name)
+        except ValueError:
+            invalid.append(name)
+
+    if invalid:
+        raise Exception(tr("params_read_error", missing="\n- ".join(invalid)))
+
     if params[P.STEP_X] <= 0 or params[P.STEP_Y] <= 0:
         raise Exception(tr("step_positive"))
 
@@ -226,7 +261,13 @@ def set_string_param(el, name, value):
     except Exception:
         return False
     try:
-        p.Set(value)
+        if value is None:
+            normalized_value = ""
+        elif isinstance(value, str):
+            normalized_value = value
+        else:
+            normalized_value = str(value)
+        p.Set(normalized_value)
         return True
     except Exception:
         return False
@@ -509,7 +550,7 @@ def load_reinforcement_zones(floor, default_version=1):
     try:
         data = json.loads(raw)
     except Exception:
-        return {"version": int(default_version), "zones": []}
+        raise ValueError(tr("invalid_reinf_zones_json"))
 
     if isinstance(data, list):
         return {"version": int(default_version), "zones": data}
@@ -522,7 +563,7 @@ def load_reinforcement_zones(floor, default_version=1):
                 "zones": zones,
             }
 
-    return {"version": int(default_version), "zones": []}
+    raise ValueError(tr("invalid_reinf_zones_schema"))
 
 
 def save_reinforcement_zones(floor, data):
@@ -552,6 +593,13 @@ def read_reinforcement_zone_ids(floor):
 
 def cut_equal_1d(start, end, max_len, tol=1e-6):
     """Равномерная нарезка отрезка [start, end] на части <= max_len."""
+    start = _require_finite_float(start, "start")
+    end = _require_finite_float(end, "end")
+    max_len = _require_positive_float(max_len, tr("spacing_positive"), "max_len")
+    tol = _require_finite_float(tol, "tol")
+    if end < start:
+        raise ValueError(tr("range_min_exceeds_max"))
+
     total = end - start
     if total <= max_len + tol:
         return [(start, end)]
@@ -573,6 +621,16 @@ def cut_at_positions_1d(start, end, max_len, positions, tol=1e-6, min_piece_rati
     min_piece_ratio * max_len, они перебалансируются с соседним куском:
     стык смещается в ближайшую к середине зоны допустимую position.
     """
+    start = _require_finite_float(start, "start")
+    end = _require_finite_float(end, "end")
+    max_len = _require_positive_float(max_len, tr("spacing_positive"), "max_len")
+    tol = _require_finite_float(tol, "tol")
+    min_piece_ratio = _require_finite_float(min_piece_ratio, "min_piece_ratio")
+    if end < start:
+        raise ValueError(tr("range_min_exceeds_max"))
+    if min_piece_ratio <= 0:
+        raise ValueError(tr("spacing_positive"))
+
     if end - start <= max_len + tol:
         return [(start, end)]
 
@@ -847,6 +905,11 @@ def build_support_nodes(
     соседних стрингеров сдвинуты на 1 пролёт, но промежуточные
     стойки выравниваются в ряд по одним и тем же grid_positions.
     """
+    max_spacing = _require_positive_float(
+        max_spacing, tr("spacing_positive"), "max_spacing"
+    )
+    support_half = _require_finite_float(support_half, "support_half")
+    tol = _require_finite_float(tol, "tol")
 
     def _rc(v):
         return round(v, 6)
@@ -953,6 +1016,15 @@ def _select_line_supports(start, end, grid_candidates, min_spacing, tol):
     Если grid_candidates пуст или не покрывает длинный пролёт —
     добавляет равномерные промежуточные (страховка).
     """
+    start = _require_finite_float(start, "start")
+    end = _require_finite_float(end, "end")
+    min_spacing = _require_positive_float(
+        min_spacing, tr("spacing_positive"), "min_spacing"
+    )
+    tol = _require_finite_float(tol, "tol")
+    if end < start:
+        raise ValueError(tr("range_min_exceeds_max"))
+
     length = end - start
     if length < tol:
         return [start]

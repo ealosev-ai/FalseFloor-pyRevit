@@ -125,7 +125,14 @@ def test_build_positions_padding_and_bounds():
 
 def test_build_positions_zero_step_returns_empty():
     mod = _import_floor_common()
-    assert mod.build_positions(0.0, 10.0, 0.0, 0.0) == []
+    with pytest.raises(ValueError):
+        mod.build_positions(0.0, 10.0, 0.0, 0.0)
+
+
+def test_build_positions_rejects_invalid_range():
+    mod = _import_floor_common()
+    with pytest.raises(ValueError):
+        mod.build_positions(10.0, 0.0, 0.0, 1.0)
 
 
 @pytest.mark.parametrize(
@@ -211,6 +218,18 @@ def test_load_reinforcement_zones_supports_list_and_dict(monkeypatch):
     assert data["zones"] == [{"name": "B"}]
 
 
+def test_load_reinforcement_zones_rejects_invalid_payload(monkeypatch):
+    mod = _import_floor_common()
+
+    monkeypatch.setattr(mod, "get_string_param", lambda _f, _n: "{bad json")
+    with pytest.raises(ValueError):
+        mod.load_reinforcement_zones(object())
+
+    monkeypatch.setattr(mod, "get_string_param", lambda _f, _n: json.dumps({"x": 1}))
+    with pytest.raises(ValueError):
+        mod.load_reinforcement_zones(object())
+
+
 def test_read_reinforcement_zone_ids_collects_all_keys(monkeypatch):
     mod = _import_floor_common()
     monkeypatch.setattr(
@@ -277,6 +296,20 @@ def test_read_floor_grid_params_success_and_missing(monkeypatch):
     assert "RF_Base_X" in str(exc.value)
 
 
+def test_read_floor_grid_params_rejects_non_finite(monkeypatch):
+    mod = _import_floor_common()
+    values = {
+        "RF_Step_X": float("nan"),
+        "RF_Step_Y": 2.0,
+        "RF_Base_X": 3.0,
+        "RF_Base_Y": 4.0,
+    }
+    monkeypatch.setattr(mod, "get_double_param", lambda _f, name: values.get(name))
+    with pytest.raises(Exception) as exc:
+        mod.read_floor_grid_params(object())
+    assert "RF_Step_X" in str(exc.value)
+
+
 def test_param_getters_and_setters():
     mod = _import_floor_common()
 
@@ -320,6 +353,10 @@ def test_param_getters_and_setters():
     assert mod.get_string_param(el, "S") == "abc"
     assert mod.set_string_param(el, "S", "xyz") is True
     assert el.LookupParameter("S")._value == "xyz"
+    assert mod.set_string_param(el, "S", 123) is True
+    assert el.LookupParameter("S")._value == "123"
+    assert mod.set_string_param(el, "S", None) is True
+    assert el.LookupParameter("S")._value == ""
 
 
 def test_mm_param_helpers_and_legacy_normalization(monkeypatch):
@@ -416,6 +453,19 @@ def test_delete_elements_and_zone_save(monkeypatch):
     )
     assert captured["name"] == mod.REINFORCEMENT_ZONES_PARAM
     assert '"zones"' in captured["raw"]
+
+
+def test_cut_and_support_helpers_reject_invalid_spacing():
+    mod = _import_floor_common()
+
+    with pytest.raises(ValueError):
+        mod.cut_equal_1d(0.0, 10.0, 0.0)
+
+    with pytest.raises(ValueError):
+        mod.cut_at_positions_1d(0.0, 10.0, -1.0, [])
+
+    with pytest.raises(ValueError):
+        mod.build_support_nodes([(0.0, 0.0, 10.0, 0.0)], 0.0)
 
 
 def test_line_style_helpers(monkeypatch):
