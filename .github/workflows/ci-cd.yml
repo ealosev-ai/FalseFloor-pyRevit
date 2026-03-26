@@ -128,7 +128,7 @@ jobs:
           New-Item -ItemType Directory -Path $stageDir | Out-Null
 
           # Runtime-only package for end users.
-          $items = @("lib", "RaisedFloor.tab", "Families", "README.md", "LICENSE", "CHANGELOG.md")
+          $items = @("lib", "RaisedFloor.tab", "Families", "resources", "README.md", "LICENSE", "CHANGELOG.md")
           foreach ($item in $items) {
             if (Test-Path $item) {
               Copy-Item $item -Destination $stageDir -Recurse -Force
@@ -136,10 +136,18 @@ jobs:
           }
 
           # Dev-only test runner button should not ship in production zip.
-          $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown11"
+          $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown"
           if (Test-Path $testsPanel) {
             Remove-Item $testsPanel -Recurse -Force
           }
+
+          # Drop local caches and bytecode from the staged runtime package.
+          Get-ChildItem -Path $stageDir -Recurse -Force -Directory |
+            Where-Object { $_.Name -in @("__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache") } |
+            Remove-Item -Recurse -Force
+          Get-ChildItem -Path $stageDir -Recurse -Force -File |
+            Where-Object { $_.Extension -in @(".pyc", ".pyo") } |
+            Remove-Item -Force
 
           Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $archiveName -Force
           echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV

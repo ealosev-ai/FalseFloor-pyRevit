@@ -21,6 +21,19 @@ def test_rf_parameter_guids_are_unique():
     assert len(guids) == len(set(guids))
 
 
+def test_rfparams_constants_match_guid_keys():
+    expected = {
+        name[3:].upper(): name for name in rf_param_schema.RF_PARAMETER_GUIDS
+    }
+    actual = {
+        attr: getattr(rf_param_schema.RFParams, attr)
+        for attr in dir(rf_param_schema.RFParams)
+        if attr.isupper() and not attr.startswith("_")
+    }
+
+    assert actual == expected
+
+
 def test_get_expected_guid_requires_known_name():
     guid = rf_param_schema.get_expected_guid("RF_Step_X")
     assert guid == "aa5ed481-5cf0-5933-b251-3a290396bb12"

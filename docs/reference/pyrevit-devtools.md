@@ -149,7 +149,7 @@ Bad candidates for blind copying:
 ### Revit-Hosted Smoke Button
 
 The most useful pyRevit-devtools-style addition for this repo is a better
-smoke runner under `99_Tests.pulldown11`.
+smoke runner under `99_Tests.pulldown`.
 
 It should check:
 

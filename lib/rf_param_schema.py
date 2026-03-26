@@ -65,11 +65,103 @@ RF_PARAMETER_GUIDS = {
 
 class RFParams(object):
     """Canonical RF parameter names."""
+    STEP_X = "RF_Step_X"
+    STEP_Y = "RF_Step_Y"
+    BASE_X = "RF_Base_X"
+    BASE_Y = "RF_Base_Y"
+    BASE_Z = "RF_Base_Z"
+    OFFSET_X = "RF_Offset_X"
+    OFFSET_Y = "RF_Offset_Y"
+    FLOOR_HEIGHT = "RF_Floor_Height"
+    TILE_THICKNESS = "RF_Tile_Thickness"
+    GEN_STATUS = "RF_Gen_Status"
+    CONTOUR_LINES_ID = "RF_Contour_Lines_ID"
+    GRID_LINES_ID = "RF_Grid_Lines_ID"
+    BASE_MARKER_ID = "RF_Base_Marker_ID"
+    TILES_ID = "RF_Tiles_ID"
+    STRINGERS_TOP_ID = "RF_Stringers_Top_ID"
+    STRINGERS_BOTTOM_ID = "RF_Stringers_Bottom_ID"
+    REINF_ZONES_JSON = "RF_Reinf_Zones_JSON"
+    SUPPORTS_ID = "RF_Supports_ID"
+    BOTTOM_MODE = "RF_Bottom_Mode"
+    BOTTOM_STEP = "RF_Bottom_Step"
+    MAX_STRINGER_LEN = "RF_Max_Stringer_Len"
+    TOP_DIRECTION = "RF_Top_Direction"
+    COLUMN = "RF_Column"
+    ROW = "RF_Row"
+    MARK = "RF_Mark"
+    TILE_TYPE = "RF_Tile_Type"
+    TILE_SIZE_X = "RF_Tile_Size_X"
+    TILE_SIZE_Y = "RF_Tile_Size_Y"
+    CUT_X = "RF_Cut_X"
+    CUT_Y = "RF_Cut_Y"
+    VOID1_X = "RF_Void1_X"
+    VOID1_Y = "RF_Void1_Y"
+    VOID1_OX = "RF_Void1_OX"
+    VOID1_OY = "RF_Void1_OY"
+    VOID2_X = "RF_Void2_X"
+    VOID2_Y = "RF_Void2_Y"
+    VOID2_OX = "RF_Void2_OX"
+    VOID2_OY = "RF_Void2_OY"
+    VOID3_X = "RF_Void3_X"
+    VOID3_Y = "RF_Void3_Y"
+    VOID3_OX = "RF_Void3_OX"
+    VOID3_OY = "RF_Void3_OY"
+    STRINGER_TYPE = "RF_Stringer_Type"
+    DIRECTION_AXIS = "RF_Direction_Axis"
+    SUPPORT_HEIGHT = "RF_Support_Height"
+    VENTILATED = "RF_Ventilated"
+    PROFILE_HEIGHT = "RF_Profile_Height"
+    PROFILE_WIDTH = "RF_Profile_Width"
+    THICKNESS = "RF_Thickness"
+    WALL_THICKNESS = "RF_Wall_Thickness"
+    BASE_SIZE = "RF_Base_Size"
+    HEAD_SIZE = "RF_Head_Size"
 
 
-for _rf_name in sorted(RF_PARAMETER_GUIDS):
-    setattr(RFParams, _rf_name[3:].upper(), _rf_name)
-del _rf_name
+def _validate_rfparams_constants():
+    expected = {
+        name[3:].upper(): name for name in sorted(RF_PARAMETER_GUIDS)
+    }
+    actual = {
+        attr: getattr(RFParams, attr)
+        for attr in dir(RFParams)
+        if attr.isupper() and not attr.startswith("_")
+    }
+
+    if actual == expected:
+        return
+
+    details = []
+    missing = sorted(set(expected) - set(actual))
+    extra = sorted(set(actual) - set(expected))
+    mismatched = sorted(
+        attr
+        for attr in expected
+        if attr in actual and actual[attr] != expected[attr]
+    )
+    if missing:
+        details.append("missing={}".format(", ".join(missing)))
+    if extra:
+        details.append("extra={}".format(", ".join(extra)))
+    if mismatched:
+        details.append(
+            "mismatched={}".format(
+                ", ".join(
+                    "{}:{}!={}".format(attr, actual[attr], expected[attr])
+                    for attr in mismatched
+                )
+            )
+        )
+
+    raise RuntimeError(
+        "RFParams constants are out of sync with RF_PARAMETER_GUIDS ({})".format(
+            "; ".join(details) or "unknown mismatch"
+        )
+    )
+
+
+_validate_rfparams_constants()
 
 
 class RFFamilies(object):

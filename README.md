@@ -58,7 +58,7 @@ pyrevit extensions update RaisedFloor
 
 > **Примечание / Note:** `pyrevit extend ui` требует `pyrevit` в PATH (входит в стандартный инсталлятор pyRevit).
 >
-> **Release package / Пакет релиза:** ZIP для конечного пользователя собирается как runtime-only (`lib/`, `RaisedFloor.tab/`, `Families/`). Каталоги `tests/`, `docs/` и dev-кнопка `99_Tests` в production ZIP не включаются.
+> **Release package / Пакет релиза:** ZIP для конечного пользователя собирается как runtime-only (`lib/`, `RaisedFloor.tab/`, `Families/`, `resources/`). Каталоги `tests/`, `docs/`, dev-кнопка `99_Tests` и локальные cache/bytecode-файлы в production ZIP не включаются.
 
 ---
 

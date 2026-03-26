@@ -86,7 +86,8 @@ Reference basis:
 
 5. Release packaging now excludes the dev-only tests panel correctly.
 - Current state:
-  - release build removes `RaisedFloor.tab/RaisedFloor.panel/99_Tests.pulldown11`
+  - release build removes `RaisedFloor.tab/RaisedFloor.panel/99_Tests.pulldown`
+  - release build includes `resources/`, which is required by the canonical shared-parameter schema
 - Assessment:
   - the original package drift on the dev test panel path is closed
 - Refs:
