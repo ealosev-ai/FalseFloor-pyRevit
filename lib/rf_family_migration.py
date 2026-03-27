@@ -16,6 +16,7 @@ from floor_utils import get_storage_type_id  # type: ignore
 from rf_param_schema import (  # type: ignore
     collect_family_parameter_guid_mismatches,
     ensure_schema_definitions,
+    use_canonical_shared_parameter_file,
 )
 
 TARGET_FAMILY_NAMES = ("RF_Tile", "RF_Stringer", "RF_Support")
@@ -519,34 +520,54 @@ def migrate_family_doc(
         result["obsolete"] = _find_obsolete_params(fam_doc, allowed_names)
         return result
 
-    ext_defs = _load_canonical_defs(app)
-    transaction = Transaction(fam_doc, "Migrate RF family parameters")
-    try:
-        transaction.Start()
-        _replace_mismatched_params_no_tx(
-            fam_doc,
-            ext_defs,
-            allowed_names,
-            result["replaced"],
-            result["errors"],
-            allow_destructive=allow_destructive,
-        )
-        _add_missing_params_no_tx(
-            fam_doc, ext_defs, allowed_names, result["added"], result["errors"]
-        )
-        if result["errors"]:
-            transaction.RollBack()
+    with use_canonical_shared_parameter_file(app):
+        ext_defs = _load_canonical_defs(app)
+
+        replace_errors = []
+        add_errors = []
+
+        replace_tx = Transaction(fam_doc, "Migrate RF family parameter GUIDs")
+        try:
+            replace_tx.Start()
+            _replace_mismatched_params_no_tx(
+                fam_doc,
+                ext_defs,
+                allowed_names,
+                result["replaced"],
+                replace_errors,
+                allow_destructive=allow_destructive,
+            )
+            if replace_errors:
+                replace_tx.RollBack()
+                result["replaced"] = []
+            else:
+                replace_tx.Commit()
+        except Exception as ex:
+            if replace_tx.HasStarted():
+                replace_tx.RollBack()
             result["replaced"] = []
+            replace_errors.append(str(ex))
+
+        add_tx = Transaction(fam_doc, "Add missing RF family parameters")
+        try:
+            add_tx.Start()
+            _add_missing_params_no_tx(
+                fam_doc, ext_defs, allowed_names, result["added"], add_errors
+            )
+            if add_errors:
+                add_tx.RollBack()
+                result["added"] = []
+            else:
+                add_tx.Commit()
+        except Exception as ex:
+            if add_tx.HasStarted():
+                add_tx.RollBack()
             result["added"] = []
-            result["obsolete"] = []
-            return result
-        result["obsolete"] = _find_obsolete_params(fam_doc, allowed_names)
-        transaction.Commit()
-    except Exception as ex:
-        if transaction.HasStarted():
-            transaction.RollBack()
-        result["errors"].append(str(ex))
-        return result
+            add_errors.append(str(ex))
+
+        result["errors"].extend(replace_errors)
+        result["errors"].extend(add_errors)
+    result["obsolete"] = _find_obsolete_params(fam_doc, allowed_names)
 
     changed = bool(result["replaced"] or result["added"])
 

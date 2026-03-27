@@ -16,11 +16,24 @@ from floor_utils import get_full_parameter_binding_info  # type: ignore
 from rf_param_schema import (  # type: ignore
     collect_project_parameter_guid_mismatches,
     ensure_schema_definitions,
+    get_parameter_storage_kind,
 )
 
 # Marker returned by collect_project_parameter_guid_mismatches for
 # parameters that exist as bound but have no resolvable SharedParameterElement.
 _UNRESOLVABLE_MARKER = "<not-shared-or-unresolved>"
+
+
+def _get_expected_storage_type(name):
+    """Resolve canonical StorageType from schema name."""
+    kind = get_parameter_storage_kind(name)
+    if kind == "Double":
+        return StorageType.Double
+    if kind == "Integer":
+        return StorageType.Integer
+    if kind == "String":
+        return StorageType.String
+    return None
 
 
 def _find_shared_param_element_by_guid(doc, guid_text):
@@ -141,8 +154,12 @@ def _backup_element_values(doc, binding_info, name, actual_guid, spe=None):
     values = {}
     is_instance = binding_info.get("is_instance", True)
 
-    # Determine storage type: SPE internal definition is authoritative
-    storage_type = _get_storage_type_from_spe(spe)
+    # Canonical schema is the primary source of truth.
+    storage_type = _get_expected_storage_type(name)
+
+    # Fallback: SPE internal definition if schema mapping is unavailable.
+    if storage_type is None:
+        storage_type = _get_storage_type_from_spe(spe)
 
     # Fallback: try binding definition
     if storage_type is None:
@@ -348,6 +365,8 @@ def migrate_project_parameter_guids(doc, app, dry_run=False):
 
         definition_specs = []
         for name, actual_guid, expected_guid, info, spe, st, vals in migration_plan:
+            if st is None:
+                st = _get_expected_storage_type(name)
             if st is None:
                 # Try one more time from SPE
                 st = _get_storage_type_from_spe(spe)

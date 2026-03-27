@@ -10,6 +10,8 @@
   RF_Support               → параметры стойки
 """
 
+import os
+
 from Autodesk.Revit.DB import (  # type: ignore
     Family,
     FamilySource,
@@ -27,7 +29,10 @@ from rf_param_schema import (  # type: ignore
     RFParams as P,
     collect_family_parameter_guid_mismatches,
     ensure_schema_definitions,
+    get_canonical_shared_parameter_file_path,
+    use_canonical_shared_parameter_file,
 )
+from rf_reporting import ScriptReporter  # type: ignore
 from rf_family_migration import migrate_family_doc  # type: ignore
 from floor_utils import (  # type: ignore
     get_storage_type_id,
@@ -107,6 +112,12 @@ def _format_guid_mismatch_lines(mismatches):
     return lines
 
 
+def _append_log_path(text, reporter):
+    if reporter and reporter.log_path:
+        return text + "\n\nLog: {}".format(reporter.log_path)
+    return text
+
+
 def _get_params_for_family(family_name):
     """Возвращает set имён параметров, нужных данному семейству."""
     name_upper = family_name.upper()
@@ -117,6 +128,20 @@ def _get_params_for_family(family_name):
     if "SUPPORT" in name_upper:
         return _SUPPORT_PARAMS
     return _ALL_PARAM_NAMES
+
+
+def _get_existing_family_param_names(fam_doc):
+    fam_mgr = fam_doc.FamilyManager
+    names = set()
+    for p in fam_mgr.GetParameters():
+        if p and p.Definition and p.Definition.Name:
+            names.add(p.Definition.Name)
+    return names
+
+
+def _get_missing_family_param_names(fam_doc, allowed_names):
+    existing = _get_existing_family_param_names(fam_doc)
+    return sorted(name for name in allowed_names if name not in existing)
 
 
 # Алиасы на функции из utils для обратной совместимости
@@ -274,6 +299,7 @@ def _process_family(family):
 
         guid_mismatches = collect_family_parameter_guid_mismatches(fam_doc, allowed)
         migrated_count = 0
+        migration_errors = []
         if guid_mismatches:
             mig_result = migrate_family_doc(
                 fam_doc,
@@ -282,14 +308,13 @@ def _process_family(family):
                 save_family=False,
                 family_name_hint=family.Name,
             )
-            if mig_result["errors"]:
-                errors = list(mig_result["errors"])
-                fam_doc.Close(False)
-                return 0, 0, errors
+            migration_errors = list(mig_result.get("errors", []))
             migrated_count = len(mig_result.get("replaced", []))
 
-        ext_defs = _load_fresh_definitions()
-        added, errors = _add_params_to_family_doc(fam_doc, ext_defs, allowed)
+        with use_canonical_shared_parameter_file(app):
+            ext_defs = _load_fresh_definitions()
+            added, errors = _add_params_to_family_doc(fam_doc, ext_defs, allowed)
+        errors = migration_errors + errors
 
         # Находим устаревшие (не удаляем — могут использоваться в геометрии)
         obsolete = _find_obsolete_params(fam_doc, allowed)
@@ -362,12 +387,23 @@ def _rollback_added_params(fam_doc, param_names):
 
 def _run_in_family_editor():
     """Режим: мы уже в редакторе семейства — добавляем параметры в текущий doc."""
+    reporter = ScriptReporter.from_pyrevit(title=TITLE, log_stem="family_params")
+    reporter.stage("Family Parameters")
     fam_name = ""
     try:
         fam_name = doc.Title or ""
     except Exception:
         pass
     allowed = _get_params_for_family(fam_name) if fam_name else _ALL_PARAM_NAMES
+    canonical_path = get_canonical_shared_parameter_file_path()
+    reporter.info("Family document: {}".format(fam_name or "<unnamed>"))
+    reporter.info("Canonical shared parameter file: {}".format(canonical_path))
+    reporter.info("Shared parameter file exists: {}".format(os.path.exists(canonical_path)))
+    missing_before = _get_missing_family_param_names(doc, allowed)
+    reporter.info("Expected RF params: {}".format(len(allowed)))
+    reporter.info("Missing before add: {}".format(len(missing_before)))
+    if missing_before:
+        reporter.info("Missing before add names: {}".format(", ".join(missing_before)))
 
     guid_mismatches = collect_family_parameter_guid_mismatches(doc, allowed)
     migrated = []
@@ -393,16 +429,29 @@ def _run_in_family_editor():
             migrated = mig_result.get("replaced", [])
             mig_errors = mig_result.get("errors", [])
 
-    ext_defs = _load_fresh_definitions()
-
-    added, errors = _add_params_to_family_doc(doc, ext_defs, allowed)
+    with use_canonical_shared_parameter_file(app):
+        ext_defs = _load_fresh_definitions()
+        added, errors = _add_params_to_family_doc(doc, ext_defs, allowed)
     errors.extend(mig_errors)
+    missing_after = _get_missing_family_param_names(doc, allowed)
 
     # Находим устаревшие (не удаляем — могут использоваться в геометрии)
     obsolete = _find_obsolete_params(doc, allowed)
+    reporter.info("Added params: {}".format(len(added)))
+    if added:
+        reporter.info("Added names: {}".format(", ".join(sorted(added))))
+    reporter.info("Missing after add: {}".format(len(missing_after)))
+    if missing_after:
+        reporter.warning("Still missing after add: {}".format(", ".join(missing_after)))
+    if obsolete:
+        reporter.warning("Obsolete RF params: {}".format(", ".join(sorted(obsolete))))
+    if errors:
+        for err in errors:
+            reporter.error(err)
 
-    if not added and not obsolete and not errors and not migrated:
-        forms.alert(tr("fam_all_ok"), title=TITLE)
+    if not added and not obsolete and not errors and not migrated and not missing_after:
+        reporter.finish()
+        forms.alert(_append_log_path(tr("fam_all_ok"), reporter), title=TITLE)
         return
 
     output = script.get_output()
@@ -423,14 +472,36 @@ def _run_in_family_editor():
         output.print_md("### " + tr("clean_errors_header"))
         for e in errors:
             output.print_md("- {}".format(e))
+    reporter.finish()
+
+    summary_lines = []
+    if added:
+        summary_lines.append(tr("fam_added", count=len(added)))
+    if migrated:
+        summary_lines.append("Migrated GUIDs: {}".format(len(migrated)))
+    if missing_after:
+        summary_lines.append(
+            "Still missing: {}".format(", ".join(missing_after[:8]))
+            + (" ..." if len(missing_after) > 8 else "")
+        )
+    if errors:
+        summary_lines.append("Errors: {}".format(len(errors)))
+    if obsolete:
+        summary_lines.append("Obsolete RF params: {}".format(len(obsolete)))
+    if not summary_lines:
+        summary_lines.append(tr("fam_all_ok"))
+    forms.alert(_append_log_path("\n".join(summary_lines), reporter), title=TITLE)
 
 
 def _run_in_project():
     """Режим: мы в проекте — обрабатываем загруженные RF_-семейства."""
+    reporter = ScriptReporter.from_pyrevit(title=TITLE, log_stem="family_params")
+    reporter.stage("Project Families")
     families = _collect_rf_families()
     if not families:
+        reporter.finish()
         forms.alert(
-            tr("fam_no_families"),
+            _append_log_path(tr("fam_no_families"), reporter),
             title=TITLE,
         )
         return
@@ -447,18 +518,22 @@ def _run_in_project():
         no=True,
     )
     if not confirm:
+        reporter.finish()
         return
 
     total_added = 0
     report_lines = []
 
     for fam in families:
+        reporter.info("Processing family: {}".format(fam.Name))
         count_add, count_rem, errs = _process_family(fam)
         total_added += count_add
+        reporter.info("Added to {}: {}".format(fam.Name, count_add))
         if count_add > 0:
             report_lines.append(tr("fam_added_to", name=fam.Name, count=count_add))
         if errs:
             for e in errs:
+                reporter.error("{} — {}".format(fam.Name, e))
                 report_lines.append("  {} — {}".format(fam.Name, e))
 
     if total_added == 0 and not report_lines:
@@ -471,7 +546,8 @@ def _run_in_project():
             parts.append("\n".join(report_lines))
         summary = "\n\n".join(parts)
 
-    forms.alert(summary, title=TITLE)
+    reporter.finish()
+    forms.alert(_append_log_path(summary, reporter), title=TITLE)
 
 
 # ── Основной блок ────────────────────────────────────────

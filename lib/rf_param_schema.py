@@ -2,6 +2,7 @@
 """Canonical RF shared-parameter schema with stable GUIDs."""
 
 import os
+import shutil
 from contextlib import contextmanager
 
 SHARED_PARAM_GROUP_NAME = "RaisedFloor"
@@ -172,6 +173,70 @@ class RFFamilies(object):
     SUPPORT = "RF_Support"
 
 
+RF_DOUBLE_PARAM_NAMES = (
+    RFParams.STEP_X,
+    RFParams.STEP_Y,
+    RFParams.BASE_X,
+    RFParams.BASE_Y,
+    RFParams.BASE_Z,
+    RFParams.OFFSET_X,
+    RFParams.OFFSET_Y,
+    RFParams.FLOOR_HEIGHT,
+    RFParams.TILE_THICKNESS,
+    RFParams.BOTTOM_STEP,
+    RFParams.MAX_STRINGER_LEN,
+    RFParams.TILE_SIZE_X,
+    RFParams.TILE_SIZE_Y,
+    RFParams.CUT_X,
+    RFParams.CUT_Y,
+    RFParams.VOID1_X,
+    RFParams.VOID1_Y,
+    RFParams.VOID1_OX,
+    RFParams.VOID1_OY,
+    RFParams.VOID2_X,
+    RFParams.VOID2_Y,
+    RFParams.VOID2_OX,
+    RFParams.VOID2_OY,
+    RFParams.VOID3_X,
+    RFParams.VOID3_Y,
+    RFParams.VOID3_OX,
+    RFParams.VOID3_OY,
+    RFParams.SUPPORT_HEIGHT,
+    RFParams.PROFILE_HEIGHT,
+    RFParams.PROFILE_WIDTH,
+    RFParams.THICKNESS,
+    RFParams.WALL_THICKNESS,
+    RFParams.BASE_SIZE,
+    RFParams.HEAD_SIZE,
+)
+
+RF_INTEGER_PARAM_NAMES = (
+    RFParams.COLUMN,
+    RFParams.ROW,
+    RFParams.VENTILATED,
+)
+
+_string_name_set = set(RF_PARAMETER_GUIDS) - set(RF_DOUBLE_PARAM_NAMES) - set(
+    RF_INTEGER_PARAM_NAMES
+)
+RF_STRING_PARAM_NAMES = tuple(
+    name for name in RF_PARAMETER_GUIDS if name in _string_name_set
+)
+
+RF_PARAMETER_STORAGE_KINDS = {}
+for _name in RF_DOUBLE_PARAM_NAMES:
+    RF_PARAMETER_STORAGE_KINDS[_name] = "Double"
+for _name in RF_INTEGER_PARAM_NAMES:
+    RF_PARAMETER_STORAGE_KINDS[_name] = "Integer"
+for _name in RF_STRING_PARAM_NAMES:
+    RF_PARAMETER_STORAGE_KINDS[_name] = "String"
+
+if set(RF_PARAMETER_STORAGE_KINDS) != set(RF_PARAMETER_GUIDS):
+    raise RuntimeError(
+        "RF_PARAMETER_STORAGE_KINDS is out of sync with RF_PARAMETER_GUIDS"
+    )
+
+
 RF_FLOOR_GRID_PARAMS = (
     RFParams.STEP_X,
     RFParams.STEP_Y,
@@ -301,9 +366,23 @@ RF_STRINGER_REQUIRED_FLOOR_PARAMS = (
 )
 
 
-def get_canonical_shared_parameter_file_path():
+def get_bundled_shared_parameter_file_path():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(root, "resources", SHARED_PARAM_FILE_NAME)
+
+
+def get_canonical_shared_parameter_file_path():
+    root = (
+        os.environ.get("LOCALAPPDATA")
+        or os.environ.get("TEMP")
+        or os.path.expanduser("~")
+    )
+    return os.path.join(
+        root,
+        "RaisedFloor.extension",
+        "sharedparams",
+        SHARED_PARAM_FILE_NAME,
+    )
 
 
 def _shared_parameter_file_header():
@@ -318,12 +397,22 @@ def _shared_parameter_file_header():
 
 
 def ensure_canonical_shared_parameter_file(path=None):
+    use_default_path = not path
     if not path:
         path = get_canonical_shared_parameter_file_path()
 
     folder = os.path.dirname(path)
     if folder and not os.path.exists(folder):
         os.makedirs(folder)
+
+    bundled_path = get_bundled_shared_parameter_file_path()
+    if (
+        use_default_path
+        and path != bundled_path
+        and os.path.exists(bundled_path)
+        and os.path.getsize(bundled_path) > 0
+    ):
+        shutil.copy2(bundled_path, path)
 
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         with open(path, "w") as fp:
@@ -348,6 +437,10 @@ def get_expected_guid(name):
     if not guid:
         raise KeyError("RF shared-parameter schema has no GUID for '{}'".format(name))
     return guid
+
+
+def get_parameter_storage_kind(name):
+    return RF_PARAMETER_STORAGE_KINDS.get(name)
 
 
 def _normalize_guid_text(value):

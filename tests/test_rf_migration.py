@@ -1,5 +1,6 @@
 """Tests for RF family and project GUID migration logic."""
 
+from contextlib import contextmanager
 import sys
 from types import ModuleType
 from unittest.mock import MagicMock, patch
@@ -480,6 +481,15 @@ class TestStorageTypeFromSPE:
 
         assert mod._get_storage_type_from_spe(None) is None
 
+    def test_get_expected_storage_type_uses_schema_map(self, _mock_revit_modules):
+        import rf_project_migration as mod
+
+        db_mod = sys.modules["Autodesk.Revit.DB"]
+
+        assert mod._get_expected_storage_type("RF_Tiles_ID") == db_mod.StorageType.String
+        assert mod._get_expected_storage_type("RF_Step_X") == db_mod.StorageType.Double
+        assert mod._get_expected_storage_type("RF_Column") == db_mod.StorageType.Integer
+
 
 # === Tests for dry-run purity (Fix: dry_run should not call ensure_schema_definitions) ===
 
@@ -558,3 +568,109 @@ class TestRestoreFamilyParamValues:
         )
         assert restored == 0
         assert failed == 0
+
+
+class TestMigrateFamilyDocExecution:
+    def test_adds_missing_params_even_when_safe_replace_fails(
+        self, _mock_revit_modules
+    ):
+        import rf_family_migration as mod
+
+        fam_doc = MagicMock()
+        fam_doc.OwnerFamily.Name = "RF_Tile"
+        app = MagicMock()
+
+        replace_tx = MagicMock()
+        add_tx = MagicMock()
+        entered = []
+
+        @contextmanager
+        def _fake_context(_app):
+            entered.append(True)
+            yield "canonical"
+
+        with patch.object(mod, "Transaction", side_effect=[replace_tx, add_tx]):
+            with patch.object(mod, "use_canonical_shared_parameter_file", _fake_context):
+                with patch.object(
+                    mod,
+                    "_load_canonical_defs",
+                    return_value={"RF_Tile_Size_X": (MagicMock(), True)},
+                ):
+                    with patch.object(mod, "_find_obsolete_params", return_value=[]):
+                        with patch.object(
+                            mod,
+                            "_replace_mismatched_params_no_tx",
+                            side_effect=lambda *args, **kwargs: args[4].append(
+                                "RF_Mark: ReplaceParameter failed"
+                            ),
+                        ):
+                            with patch.object(
+                                mod,
+                                "_add_missing_params_no_tx",
+                                side_effect=lambda *args, **kwargs: args[3].append(
+                                    "RF_Tile_Size_X"
+                                ),
+                            ):
+                                result = mod.migrate_family_doc(
+                                    fam_doc,
+                                    app,
+                                    project_doc=None,
+                                    save_family=False,
+                                    family_name_hint="RF_Tile",
+                                    dry_run=False,
+                                    allow_destructive=False,
+                                )
+
+        replace_tx.RollBack.assert_called_once()
+        add_tx.Commit.assert_called_once()
+        assert entered == [True]
+        assert result["replaced"] == []
+        assert result["added"] == ["RF_Tile_Size_X"]
+        assert any("ReplaceParameter failed" in err for err in result["errors"])
+
+    def test_non_dry_run_keeps_canonical_shared_param_file_active(
+        self, _mock_revit_modules
+    ):
+        import rf_family_migration as mod
+
+        fam_doc = MagicMock()
+        fam_doc.OwnerFamily.Name = "RF_Tile"
+        app = MagicMock()
+
+        replace_tx = MagicMock()
+        add_tx = MagicMock()
+        entered = []
+
+        @contextmanager
+        def _fake_context(_app):
+            entered.append(True)
+            yield "canonical"
+
+        with patch.object(mod, "Transaction", side_effect=[replace_tx, add_tx]):
+            with patch.object(mod, "use_canonical_shared_parameter_file", _fake_context):
+                with patch.object(
+                    mod,
+                    "_load_canonical_defs",
+                    return_value={"RF_Tile_Size_X": (MagicMock(), True)},
+                ):
+                    with patch.object(mod, "_find_obsolete_params", return_value=[]):
+                        with patch.object(
+                            mod,
+                            "_replace_mismatched_params_no_tx",
+                            return_value=None,
+                        ):
+                            with patch.object(
+                                mod,
+                                "_add_missing_params_no_tx",
+                                return_value=None,
+                            ):
+                                mod.migrate_family_doc(
+                                    fam_doc,
+                                    app,
+                                    project_doc=None,
+                                    save_family=False,
+                                    family_name_hint="RF_Tile",
+                                    dry_run=False,
+                                )
+
+        assert entered == [True]

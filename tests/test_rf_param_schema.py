@@ -42,6 +42,13 @@ def test_get_expected_guid_requires_known_name():
         rf_param_schema.get_expected_guid("RF_Unknown")
 
 
+def test_get_parameter_storage_kind_returns_canonical_kind():
+    assert rf_param_schema.get_parameter_storage_kind("RF_Step_X") == "Double"
+    assert rf_param_schema.get_parameter_storage_kind("RF_Column") == "Integer"
+    assert rf_param_schema.get_parameter_storage_kind("RF_Tiles_ID") == "String"
+    assert rf_param_schema.get_parameter_storage_kind("RF_Unknown") is None
+
+
 def test_collect_definition_guid_mismatches_skips_unverifiable_and_detects_wrong_guid():
     class _Def:
         def __init__(self, name, guid_marker):
@@ -175,6 +182,77 @@ def test_ensure_canonical_shared_parameter_file_writes_header():
     assert created == path
     assert "*META\tVERSION\tMINVERSION" in content
     assert "*PARAM\tGUID\tNAME\tDATATYPE" in content
+
+
+def test_ensure_canonical_shared_parameter_file_uses_local_writable_copy(monkeypatch):
+    tmp_dir = _make_workspace_tmp_dir()
+    bundle_dir = os.path.join(tmp_dir, "bundle")
+    local_root = os.path.join(tmp_dir, "local")
+    os.makedirs(bundle_dir)
+
+    bundled_path = os.path.join(bundle_dir, "RaisedFloor.sharedparameters.txt")
+    bundled_content = (
+        "# bundled copy\n"
+        "*META\tVERSION\tMINVERSION\n"
+        "META\t2\t1\n"
+    )
+    with open(bundled_path, "w") as fp:
+        fp.write(bundled_content)
+
+    try:
+        monkeypatch.setenv("LOCALAPPDATA", local_root)
+        monkeypatch.setattr(
+            rf_param_schema,
+            "get_bundled_shared_parameter_file_path",
+            lambda: bundled_path,
+        )
+        created = rf_param_schema.ensure_canonical_shared_parameter_file()
+        with open(created, "r") as fp:
+            content = fp.read()
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    assert created.startswith(local_root)
+    assert content == bundled_content
+
+
+def test_ensure_canonical_shared_parameter_file_refreshes_stale_local_copy(
+    monkeypatch,
+):
+    tmp_dir = _make_workspace_tmp_dir()
+    bundle_dir = os.path.join(tmp_dir, "bundle")
+    local_root = os.path.join(tmp_dir, "local")
+    os.makedirs(bundle_dir)
+
+    bundled_path = os.path.join(bundle_dir, "RaisedFloor.sharedparameters.txt")
+    bundled_content = "# bundled canonical copy\n"
+
+    try:
+        with open(bundled_path, "w") as fp:
+            fp.write(bundled_content)
+
+        monkeypatch.setenv("LOCALAPPDATA", local_root)
+        monkeypatch.setattr(
+            rf_param_schema,
+            "get_bundled_shared_parameter_file_path",
+            lambda: bundled_path,
+        )
+
+        local_path = rf_param_schema.get_canonical_shared_parameter_file_path()
+        local_dir = os.path.dirname(local_path)
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
+        with open(local_path, "w") as fp:
+            fp.write("# stale local copy\n")
+
+        created = rf_param_schema.ensure_canonical_shared_parameter_file()
+        with open(created, "r") as fp:
+            content = fp.read()
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    assert created == local_path
+    assert content == bundled_content
 
 
 def test_use_canonical_shared_parameter_file_restores_original_value():

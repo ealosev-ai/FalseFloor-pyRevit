@@ -120,7 +120,11 @@ def _validate_params(instance, param_names):
     """Возвращает список отсутствующих параметров."""
     missing = []
     for name in param_names:
-        if not instance.LookupParameter(name):
+        try:
+            param = instance.LookupParameter(name)
+        except Exception:
+            param = None
+        if param is None:
             missing.append(name)
     return missing
 
@@ -422,6 +426,10 @@ try:
 
                 # Валидация параметров после первого размещения
                 if not placed_ids:
+                    doc.Regenerate()
+                    refreshed = doc.GetElement(instance.Id)
+                    if refreshed is not None:
+                        instance = refreshed
                     missing = _validate_params(instance, _REQUIRED_PARAMS)
                     if missing:
                         forms.alert(
