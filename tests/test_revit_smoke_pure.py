@@ -4,7 +4,6 @@
 import os
 
 import pytest
-
 from revit_smoke import SmokeReport, get_expected_family_param_names, get_extension_root
 
 
@@ -31,7 +30,9 @@ def test_get_extension_root_walks_up_from_button_script():
 
     root = get_extension_root(start)
 
-    assert root.endswith("RaisedFloor.extension")
+    # Корень — папка, содержащая и lib/ и RaisedFloor.tab/
+    assert os.path.isdir(os.path.join(root, "lib"))
+    assert os.path.isdir(os.path.join(root, "RaisedFloor.tab"))
 
 
 @pytest.mark.parametrize(
