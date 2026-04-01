@@ -62,3 +62,9 @@ ENV/
 .coverage
 coverage.xml
 htmlcov/
+
+# Local zip artifacts
+*.zip
+
+# Unreleased lab files
+lib/floor_base.py
