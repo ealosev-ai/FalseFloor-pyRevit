@@ -15,8 +15,8 @@ from Autodesk.Revit.DB import (  # type: ignore
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter  # type: ignore
 from floor_i18n import tr  # type: ignore
-from rf_param_schema import RFParams as P  # type: ignore
 from revit_context import get_doc  # type: ignore
+from rf_param_schema import RFParams as P  # type: ignore
 
 REINFORCEMENT_ZONES_PARAM = P.REINF_ZONES_JSON
 
@@ -658,6 +658,103 @@ def cut_at_positions_1d(start, end, max_len, positions, tol=1e-6, min_piece_rati
     return _rebalance_short_edges(segs, max_len, min_piece_ratio, tol, cands)
 
 
+def cut_segments_with_stagger_preference(
+    segs,
+    max_len,
+    preferred_positions,
+    alternate_positions,
+    previous_seams=None,
+    tol=1e-6,
+):
+    """Cut orthogonal segments and choose the better stagger family.
+
+    The choice is local to the current row/lane:
+    1. Prefer layouts whose internal seams do not reuse the previous row seams.
+    2. Then prefer fewer resulting pieces.
+    3. Then prefer longer pieces.
+    4. Finally keep the preferred family as deterministic fallback.
+    """
+
+    def _cut_single(seg, positions):
+        x1, y1, x2, y2 = seg
+        if abs(y1 - y2) < tol:
+            s, e = min(x1, x2), max(x1, x2)
+            pieces = (
+                cut_at_positions_1d(s, e, max_len, positions, tol=tol)
+                if positions
+                else cut_equal_1d(s, e, max_len, tol=tol)
+            )
+            cut_segs = [(a, y1, b, y2) for a, b in pieces]
+            seams = [b for _, b in pieces[:-1]]
+            lengths = [b - a for a, b in pieces]
+            return cut_segs, seams, lengths
+
+        if abs(x1 - x2) < tol:
+            s, e = min(y1, y2), max(y1, y2)
+            pieces = (
+                cut_at_positions_1d(s, e, max_len, positions, tol=tol)
+                if positions
+                else cut_equal_1d(s, e, max_len, tol=tol)
+            )
+            cut_segs = [(x1, a, x2, b) for a, b in pieces]
+            seams = [b for _, b in pieces[:-1]]
+            lengths = [b - a for a, b in pieces]
+            return cut_segs, seams, lengths
+
+        length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        return [seg], [], [length]
+
+    prev_seams = set(round(float(v), 6) for v in (previous_seams or []))
+    families = (
+        ("preferred", list(preferred_positions or []), 0),
+        ("alternate", list(alternate_positions or []), 1),
+    )
+    candidates = []
+
+    for label, positions, tiebreak in families:
+        cut_segs = []
+        seam_positions = []
+        piece_lengths = []
+        for seg in segs:
+            seg_cut, seg_seams, seg_lengths = _cut_single(seg, positions)
+            cut_segs.extend(seg_cut)
+            seam_positions.extend(seg_seams)
+            piece_lengths.extend(seg_lengths)
+
+        seam_keys = set(round(float(v), 6) for v in seam_positions)
+        conflict_count = len(seam_keys.intersection(prev_seams))
+        max_piece = max(piece_lengths) if piece_lengths else 0.0
+        min_piece = min(piece_lengths) if piece_lengths else 0.0
+        score = (
+            1 if conflict_count else 0,
+            conflict_count,
+            len(cut_segs),
+            -max_piece,
+            -min_piece,
+            tiebreak,
+        )
+        candidates.append(
+            {
+                "label": label,
+                "segments": cut_segs,
+                "seams": sorted(seam_keys),
+                "piece_count": len(cut_segs),
+                "conflict_count": conflict_count,
+                "score": score,
+            }
+        )
+
+    best = min(candidates, key=lambda item: item["score"])
+    return {
+        "segments": best["segments"],
+        "seams": best["seams"],
+        "piece_count": best["piece_count"],
+        "conflict_count": best["conflict_count"],
+        "used_alternate": best["label"] == "alternate",
+        "candidates": candidates,
+    }
+
+
 def _rebalance_short_edges(segs, max_len, min_piece_ratio, tol, positions):
     """Убирает слишком короткие крайние куски, сохраняя стыки в positions.
 
@@ -771,9 +868,11 @@ def compute_stagger_positions(main_keys, lower_positions):
     Returns:
         dict с ключами:
         - lp_even, lp_odd: чётные/нечётные позиции нижних (для нарезки верхних)
-        - mk_mids_even, mk_mids_odd: чётные/нечётные серединные пролёты (для нарезки нижних)
+        - mk_even, mk_odd: чётные/нечётные позиции верхних (для нарезки нижних).
+          Стык нижнего на пересечении с верхним — верхний прижимает стык сверху,
+          стойка подпирает снизу.
         - stagger_odd_upper: set — позиции верхних, режущихся по lp_odd
-        - stagger_odd_lower: set — позиции нижних, режущихся по mk_mids_odd
+        - stagger_odd_lower: set — позиции нижних, режущихся по mk_odd
     """
 
     def _rc(v):
@@ -789,15 +888,12 @@ def compute_stagger_positions(main_keys, lower_positions):
         lp_even = list(sorted_lp)
         lp_odd = list(sorted_lp)
 
-    mk_mids = [
-        (sorted_mk[i] + sorted_mk[i + 1]) / 2.0 for i in range(len(sorted_mk) - 1)
-    ]
-    if len(mk_mids) >= 2:
-        mk_mids_even = mk_mids[::2]
-        mk_mids_odd = mk_mids[1::2]
+    if len(sorted_mk) >= 2:
+        mk_even = sorted_mk[::2]
+        mk_odd = sorted_mk[1::2]
     else:
-        mk_mids_even = list(mk_mids)
-        mk_mids_odd = list(mk_mids)
+        mk_even = list(sorted_mk)
+        mk_odd = list(sorted_mk)
 
     stagger_odd_upper = set(_rc(p) for p in sorted_mk[1::2])
     stagger_odd_lower = set(_rc(p) for p in sorted_lp[1::2])
@@ -805,8 +901,8 @@ def compute_stagger_positions(main_keys, lower_positions):
     return {
         "lp_even": lp_even,
         "lp_odd": lp_odd,
-        "mk_mids_even": mk_mids_even,
-        "mk_mids_odd": mk_mids_odd,
+        "mk_even": mk_even,
+        "mk_odd": mk_odd,
         "stagger_odd_upper": stagger_odd_upper,
         "stagger_odd_lower": stagger_odd_lower,
     }
@@ -944,6 +1040,18 @@ def build_support_nodes(
         endpoint_count[p0] = endpoint_count.get(p0, 0) + 1
         endpoint_count[p1] = endpoint_count.get(p1, 0) + 1
 
+    # --- Глобальная сетка стоек: подмножество grid_positions с шагом ≥ max_spacing ---
+    #   Выбирается ДО цикла по сегментам, чтобы все параллельные стрингеры
+    #   получали промежуточные стойки на одних и тех же позициях.
+    support_grid = []
+    if grid_positions is not None:
+        sorted_gp = sorted(grid_positions)
+        if sorted_gp:
+            support_grid = [sorted_gp[0]]
+            for gp in sorted_gp[1:]:
+                if gp - support_grid[-1] >= max_spacing - tol:
+                    support_grid.append(gp)
+
     # --- Расставляем стойки по каждому сегменту ---
     support_set = set()
     for x1, y1, x2, y2 in lower_segs:
@@ -983,12 +1091,9 @@ def build_support_nodes(
                 support_set.add((perp, val))
             continue
 
-        candidates = []
-        if grid_positions is not None:
-            for gp in grid_positions:
-                if gp <= span_start + tol or gp >= span_end - tol:
-                    continue
-                candidates.append(gp)
+        candidates = [
+            gp for gp in support_grid if gp > span_start + tol and gp < span_end - tol
+        ]
 
         selected = _select_line_supports(
             span_start,
@@ -1009,9 +1114,8 @@ def build_support_nodes(
 def _select_line_supports(start, end, grid_candidates, min_spacing, tol):
     """Расставляет стойки вдоль линии [start..end].
 
-    Начало и конец — обязательны. Промежуточные — на позициях из
-    grid_candidates (линии сетки), не ближе min_spacing друг к другу
-    и к началу/концу.
+    Начало и конец — обязательны. Промежуточные — все позиции из
+    grid_candidates (уже отфильтрованные глобально с шагом ≥ min_spacing).
 
     Если grid_candidates пуст или не покрывает длинный пролёт —
     добавляет равномерные промежуточные (страховка).
@@ -1034,22 +1138,9 @@ def _select_line_supports(start, end, grid_candidates, min_spacing, tol):
     if length <= min_spacing + tol:
         return result
 
-    # Фильтр: далеко от start и end
-    valid = sorted(
-        g
-        for g in grid_candidates
-        if g > start + min_spacing - tol and g < end - min_spacing + tol
-    )
-
-    # Жадный отбор: не ближе min_spacing друг к другу
-    last = start
-    for g in valid:
-        if g - last < min_spacing - tol:
-            continue
-        if end - g < min_spacing - tol:
-            break
-        result.append(g)
-        last = g
+    # Все глобальные кандидаты внутри пролёта ставим без доп. фильтрации —
+    # шаг ≥ min_spacing уже обеспечен при формировании support_grid.
+    result.extend(grid_candidates)
 
     # Страховка: если сетка не закрывает длинный пролёт, добиваем равномерно,
     # но не нарушаем минимальный шаг.

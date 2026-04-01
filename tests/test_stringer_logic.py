@@ -64,9 +64,9 @@ class TestComputeStaggerPositions:
         assert r["lp_even"] == [0.0, 1000.0, 2000.0]
         assert r["lp_odd"] == [500.0, 1500.0]
 
-        # mk_mids = midpoints between consecutive main_keys
-        assert r["mk_mids_even"] == pytest.approx([300.0, 1500.0])
-        assert r["mk_mids_odd"] == pytest.approx([900.0])
+        # mk_even/mk_odd = even/odd subsets of main_keys (lower joints at crossings)
+        assert r["mk_even"] == [0.0, 1200.0]
+        assert r["mk_odd"] == [600.0, 1800.0]
 
     def test_stagger_odd_sets(self):
         """Stagger sets contain every other position (1-indexed)."""
@@ -99,22 +99,22 @@ class TestComputeStaggerPositions:
         assert r["lp_odd"] == [800.0]
 
     def test_single_main_key(self):
-        """With 1 main_key, mk_mids is empty."""
+        """With 1 main_key, mk_even/mk_odd both equal that single key."""
         mk = [500.0]
         lp = [0.0, 600.0, 1200.0]
         r = compute_stagger_positions(mk, lp)
 
-        assert r["mk_mids_even"] == []
-        assert r["mk_mids_odd"] == []
+        assert r["mk_even"] == [500.0]
+        assert r["mk_odd"] == [500.0]
 
     def test_two_main_keys(self):
-        """With 2 main_keys, mk_mids has 1 midpoint → both even and odd are same."""
+        """With 2 main_keys, even=[first], odd=[second]."""
         mk = [0.0, 600.0]
         lp = [100.0, 400.0, 700.0]
         r = compute_stagger_positions(mk, lp)
 
-        assert r["mk_mids_even"] == pytest.approx([300.0])
-        assert r["mk_mids_odd"] == pytest.approx([300.0])
+        assert r["mk_even"] == [0.0]
+        assert r["mk_odd"] == [600.0]
 
     def test_unsorted_input(self):
         """Inputs are sorted internally."""
@@ -124,9 +124,9 @@ class TestComputeStaggerPositions:
 
         assert r["lp_even"] == [0.0, 1000.0]
         assert r["lp_odd"] == [500.0]
-        # mk_mids = [300, 900] → even=[300], odd=[900]
-        assert r["mk_mids_even"] == pytest.approx([300.0])
-        assert r["mk_mids_odd"] == pytest.approx([900.0])
+        # mk sorted = [0, 600, 1200] → even=[0, 1200], odd=[600]
+        assert r["mk_even"] == [0.0, 1200.0]
+        assert r["mk_odd"] == [600.0]
 
     def test_empty_lower(self):
         """Empty lower_positions → degenerate but no crash."""

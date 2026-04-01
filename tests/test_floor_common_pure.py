@@ -165,6 +165,38 @@ def test_cut_at_positions_uses_hints_and_fallback():
     assert len(fallback) == 4
 
 
+def test_cut_segments_with_stagger_preference_prefers_fewer_pieces():
+    mod = _import_floor_common()
+    segs = [(0.0, 0.0, 6180.0, 0.0)]
+    result = mod.cut_segments_with_stagger_preference(
+        segs,
+        3600.0,
+        preferred_positions=[0.0, 2400.0, 4800.0, 7200.0],
+        alternate_positions=[1200.0, 3600.0, 6000.0],
+    )
+
+    assert result["used_alternate"] is True
+    assert result["piece_count"] == 2
+    assert result["seams"] == [3600.0]
+
+
+def test_cut_segments_with_stagger_preference_avoids_previous_row_seam():
+    mod = _import_floor_common()
+    segs = [(0.0, 0.0, 6180.0, 0.0)]
+    result = mod.cut_segments_with_stagger_preference(
+        segs,
+        3600.0,
+        preferred_positions=[0.0, 2400.0, 4800.0, 7200.0],
+        alternate_positions=[1200.0, 3600.0, 6000.0],
+        previous_seams=[3600.0],
+    )
+
+    assert result["used_alternate"] is False
+    assert result["conflict_count"] == 0
+    assert result["piece_count"] == 3
+    assert result["seams"] == [2400.0, 4800.0]
+
+
 def test_split_orthogonal_segments_horizontal_vertical_and_diagonal():
     mod = _import_floor_common()
     src = [(0.0, 0.0, 10.0, 0.0), (2.0, 1.0, 2.0, 11.0), (0.0, 0.0, 2.0, 2.0)]
@@ -189,6 +221,31 @@ def test_build_support_nodes_deduplicates_and_inserts_intermediate():
     assert len(nodes) == len(set(nodes))
     assert (0.0, 0.0) in nodes
     assert (30.0, 0.0) in nodes
+
+
+def test_build_support_nodes_global_grid_alignment():
+    """Parallel segments with grid_positions get intermediate supports at the same positions."""
+    mod = _import_floor_common()
+    # Two parallel horizontal segments with different start/end
+    segs = [
+        (0.0, 0.0, 50.0, 0.0),
+        (5.0, 10.0, 45.0, 10.0),
+    ]
+    grid_pos = [10.0, 20.0, 30.0, 40.0]
+    nodes = mod.build_support_nodes(
+        segs, max_spacing=15.0, support_half=0.0, grid_positions=grid_pos
+    )
+    # Extract x-positions per y-row
+    row_0 = sorted(x for x, y in nodes if abs(y) < 0.01)
+    row_10 = sorted(x for x, y in nodes if abs(y - 10.0) < 0.01)
+    # Intermediate grid supports should align across rows
+    grid_in_0 = [x for x in row_0 if x in grid_pos]
+    grid_in_10 = [x for x in row_10 if x in grid_pos]
+    # Both rows should pick the same global grid positions (20.0, 30.0)
+    # because grid step=10 < max_spacing=15, so global grid picks every other: [10, 30] or [10, 20, 30, 40]
+    # with spacing filter ≥15: [10, 30] or [10, 40]
+    # The important thing: the SAME grid positions in both rows
+    assert grid_in_0 == grid_in_10
 
 
 def test_looks_like_legacy_mm_in_length_heuristic():

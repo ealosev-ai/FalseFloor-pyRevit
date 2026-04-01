@@ -28,6 +28,7 @@ from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
     compute_stagger_positions,
+    cut_segments_with_stagger_preference,
     cut_at_positions_1d,
     cut_equal_1d,
     drop_near_parallel,
@@ -729,32 +730,45 @@ def main():
     contour_lower_hole = _clip_to_boundary(contour_lower_hole, clip_h, clip_v)
 
     # ── 5. Нарезка по макс. длине ──
-    #   Верхние: шахматный порядок стыков на нижних позициях (lower_positions).
-    #     Чётные ряды режутся на чётных нижних, нечётные — на нечётных.
+    #   Верхние: локальный шахматный порядок стыков на нижних позициях.
+    #     Для каждого реально существующего ряда пробуем оба семейства стыков
+    #     и выбираем вариант, который не повторяет внутренние стыки предыдущего
+    #     активного ряда и даёт меньше кусков.
     #   Нижние: стыки в СЕРЕДИНАХ пролётов между верхними (main_keys).
     #     Конструктивно: нижний непрерывен под каждым верхним (место макс. нагрузки),
     #     стык — в центре пролёта (минимум нагрузки).  Шахматный порядок сохраняется.
     stg = compute_stagger_positions(main_keys, lower_positions)
     lp_even = stg["lp_even"]
     lp_odd = stg["lp_odd"]
-    mk_mids_even = stg["mk_mids_even"]
-    mk_mids_odd = stg["mk_mids_odd"]
-    mk_mids = sorted(mk_mids_even + mk_mids_odd)
-    _stagger_odd_upper = stg["stagger_odd_upper"]
+    mk_even = stg["mk_even"]
+    mk_odd = stg["mk_odd"]
     _stagger_odd_lower = stg["stagger_odd_lower"]
 
     upper_segs_cut = []
+    upper_rows = {}
     for seg in upper_segs:
         pos = _rc(seg[1] if dir_x else seg[0])
-        lp = lp_odd if pos in _stagger_odd_upper else lp_even
-        upper_segs_cut.extend(_cut_seg(seg, max_len, lp))
+        upper_rows.setdefault(pos, []).append(seg)
+
+    prev_upper_seams = None
+    for pos in sorted(upper_rows):
+        row_result = cut_segments_with_stagger_preference(
+            upper_rows[pos],
+            max_len,
+            lp_even,
+            lp_odd,
+            previous_seams=prev_upper_seams,
+            tol=TOL,
+        )
+        upper_segs_cut.extend(row_result["segments"])
+        prev_upper_seams = row_result["seams"]
     upper_segs = upper_segs_cut
 
     lower_segs_cut = []
     for seg in lower_segs:
         pos = _rc(seg[0] if dir_x else seg[1])
-        mids = mk_mids_odd if pos in _stagger_odd_lower else mk_mids_even
-        lower_segs_cut.extend(_cut_seg(seg, max_len, mids))
+        cuts = mk_odd if pos in _stagger_odd_lower else mk_even
+        lower_segs_cut.extend(_cut_seg(seg, max_len, cuts))
     lower_segs = lower_segs_cut
 
     contour_upper_wall = [
@@ -764,10 +778,10 @@ def main():
         p for seg in contour_upper_hole for p in _cut_seg(seg, max_len, lower_positions)
     ]
     contour_lower_wall = [
-        p for seg in contour_lower_wall for p in _cut_seg(seg, max_len, mk_mids)
+        p for seg in contour_lower_wall for p in _cut_seg(seg, max_len, main_keys)
     ]
     contour_lower_hole = [
-        p for seg in contour_lower_hole for p in _cut_seg(seg, max_len, mk_mids)
+        p for seg in contour_lower_hole for p in _cut_seg(seg, max_len, main_keys)
     ]
 
     # ── 5a. Отсев hole-контурных нижних, дублирующих осевые ──

@@ -4,9 +4,6 @@ from Autodesk.Revit.DB import (  # type: ignore
     BuiltInCategory,
     Color,
     ElementId,
-    Options,
-    PlanarFace,
-    Solid,
     ViewPlan,
 )
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
@@ -22,6 +19,7 @@ from floor_common import (  # type: ignore
     set_double_param,
     set_string_param,
 )
+from floor_base import get_canonical_base_point, get_top_face_and_loops  # type: ignore
 from floor_grid import redraw_grid_for_floor  # type: ignore
 from floor_i18n import tr  # type: ignore
 from rf_param_schema import RFParams as P  # type: ignore
@@ -65,44 +63,6 @@ def ask_mm_value(title, prompt, default_value):
         return None
 
 
-def get_top_face_and_loops(floor):
-    view = get_active_view()
-    opt = Options()
-    opt.ComputeReferences = True
-    if view:
-        opt.DetailLevel = view.DetailLevel
-
-    geom = floor.get_Geometry(opt)
-    if not geom:
-        return None, None
-
-    best_face = None
-    best_z = None
-
-    for geom_obj in geom:
-        solid = geom_obj if isinstance(geom_obj, Solid) else None
-        if not solid or solid.Volume <= 0:
-            continue
-
-        for face in solid.Faces:
-            planar_face = face if isinstance(face, PlanarFace) else None
-            if not planar_face:
-                continue
-            if abs(planar_face.FaceNormal.Z - 1.0) < 1e-6:
-                z_coord = planar_face.Origin.Z
-                if best_face is None or z_coord > best_z:
-                    best_face = planar_face
-                    best_z = z_coord
-
-    if not best_face:
-        return None, None
-
-    try:
-        return best_face, best_face.GetEdgesAsCurveLoops()
-    except Exception:
-        return best_face, None
-
-
 def _resolve_floor(floor_id_int):
     doc = get_doc()
     if not doc:
@@ -133,7 +93,7 @@ def rebuild_contour_for_floor(floor_id_int):
         raise Exception(tr("prepare_all_open_plan"))
 
     floor = _resolve_floor(floor_id_int)
-    face, edge_loops = get_top_face_and_loops(floor)
+    face, edge_loops = get_top_face_and_loops(floor, view=view)
     if not face or not edge_loops:
         raise Exception(tr("contour_face_not_found"))
 
@@ -230,9 +190,11 @@ try:
     floor_id_int = get_id_value(floor.Id)
     reporter.info("Selected floor id: {}".format(floor_id_int))
 
-    base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))
+    base_point = get_canonical_base_point(floor, view=view)
+    if not base_point:
+        raise Exception(tr("contour_face_not_found"))
     reporter.info(
-        "Base point: X={:.3f}, Y={:.3f}, Z={:.3f}".format(
+        "Canonical base point: X={:.3f}, Y={:.3f}, Z={:.3f}".format(
             base_point.X,
             base_point.Y,
             base_point.Z,

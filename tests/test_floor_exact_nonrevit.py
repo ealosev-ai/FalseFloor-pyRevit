@@ -489,6 +489,7 @@ def test_find_best_shift_orchestration(monkeypatch):
     assert result["snap_x_count"] > 0
     assert result["refine_count"] > 0
     assert result["total_count"] >= len(result["top_results"])
+    assert "equivalent_top_results" in result
 
 
 def test_analyze_cell_exact_empty_full_fragment_simple_and_complex(monkeypatch):
@@ -1775,9 +1776,12 @@ def test_find_best_shift_basic():
     )
     assert "best" in result
     assert "top_results" in result
+    assert "equivalent_top_results" in result
     assert len(result["top_results"]) <= 3
     assert result["best"]["rank_key"] is not None
     assert result["coarse_count"] > 0
+    assert "phase_x_internal" in result["best"]
+    assert "phase_y_internal" in result["best"]
 
     # Verify all phases reported
     phases = [p[0] for p in progress_log]
@@ -2217,6 +2221,10 @@ def test_find_best_shift_regression():
     assert best["shift_y_mm"] == 0
     assert best["shift_x_internal"] == 0.0
     assert best["shift_y_internal"] == 0.0
+    assert best["phase_x_mm"] == 0
+    assert best["phase_y_mm"] == 0
+    assert best["phase_x_internal"] == 0.0
+    assert best["phase_y_internal"] == 0.0
 
     # --- counters ---
     assert best["unsplit_holes"] == 1
@@ -2230,10 +2238,111 @@ def test_find_best_shift_regression():
     # --- top-N ---
     tops = result["top_results"]
     assert len(tops) == 3
+    assert len(result["equivalent_top_results"]) == 5
     # All top results share the same rank_key (mock geometry is uniform)
     for t in tops:
         assert t["rank_key"] == rk
     # Top results ordered by shift values (deterministic tie-breaking)
     assert tops[0]["shift_x_mm"] == 0 and tops[0]["shift_y_mm"] == 0
-    assert tops[1]["shift_x_mm"] == 0 and tops[1]["shift_y_mm"] == 50
-    assert tops[2]["shift_x_mm"] == 0 and tops[2]["shift_y_mm"] == 100
+    assert tops[1]["shift_x_mm"] == 0 and tops[1]["shift_y_mm"] == 10
+    assert tops[2]["shift_x_mm"] == 0 and tops[2]["shift_y_mm"] == 20
+
+
+def test_find_best_shift_base_invariance():
+    mod = _import_floor_exact()
+    step = mod.mm_to_internal(600)
+
+    outer = mod.Paths64()
+    outer.Add(mod.make_rect_path64(0, 0, 1300, 1300))
+    bbox = (0.0, 0.0, mod.mm_to_internal(1300), mod.mm_to_internal(1300))
+    hole_paths = mod.Paths64()
+    hole_paths.Add(mod.make_rect_path64(400, 400, 500, 500))
+
+    bases_mm = [(0.0, 0.0), (137.0, 251.0), (450.0, 300.0)]
+    reference_phase = None
+    reference_rank = None
+
+    for base_x_mm, base_y_mm in bases_mm:
+        base_x = mod.mm_to_internal(base_x_mm)
+        base_y = mod.mm_to_internal(base_y_mm)
+        result = mod.find_best_shift(
+            step_x=step,
+            step_y=step,
+            base_x_raw=base_x,
+            base_y_raw=base_y,
+            outer_paths=outer,
+            hole_paths=hole_paths,
+            holes_bboxes_mm=[(400.0, 400.0, 500.0, 500.0)],
+            outer_bbox_internal=bbox,
+            unacceptable_cut_mm=100.0,
+            unwanted_cut_mm=150.0,
+            acceptable_cut_mm=200.0,
+            coarse_shift_step_mm=50.0,
+            top_n=3,
+            refine_shift_step_mm=5.0,
+            refine_radius_mm=25.0,
+            min_edge_clearance_mm=15.0,
+        )
+        best = result["best"]
+
+        resolved_phase_x = mod._normalize_shift(base_x + best["shift_x_internal"], step)
+        resolved_phase_y = mod._normalize_shift(base_y + best["shift_y_internal"], step)
+
+        assert resolved_phase_x == pytest.approx(best["phase_x_internal"])
+        assert resolved_phase_y == pytest.approx(best["phase_y_internal"])
+
+        if reference_phase is None:
+            reference_phase = (best["phase_x_internal"], best["phase_y_internal"])
+            reference_rank = best["rank_key"]
+            continue
+
+        assert best["phase_x_internal"] == pytest.approx(reference_phase[0])
+        assert best["phase_y_internal"] == pytest.approx(reference_phase[1])
+        assert best["rank_key"] == reference_rank
+
+
+def test_find_best_shift_is_repeatable_for_same_inputs():
+    mod = _import_floor_exact()
+    step = mod.mm_to_internal(600)
+
+    outer = mod.Paths64()
+    outer.Add(mod.make_rect_path64(0, 0, 1300, 1300))
+    bbox = (0.0, 0.0, mod.mm_to_internal(1300), mod.mm_to_internal(1300))
+    hole_paths = mod.Paths64()
+    hole_paths.Add(mod.make_rect_path64(400, 400, 500, 500))
+
+    kwargs = dict(
+        step_x=step,
+        step_y=step,
+        base_x_raw=mod.mm_to_internal(137.0),
+        base_y_raw=mod.mm_to_internal(251.0),
+        outer_paths=outer,
+        hole_paths=hole_paths,
+        holes_bboxes_mm=[(400.0, 400.0, 500.0, 500.0)],
+        outer_bbox_internal=bbox,
+        unacceptable_cut_mm=100.0,
+        unwanted_cut_mm=150.0,
+        acceptable_cut_mm=200.0,
+        coarse_shift_step_mm=50.0,
+        top_n=3,
+        refine_shift_step_mm=5.0,
+        refine_radius_mm=25.0,
+        min_edge_clearance_mm=15.0,
+    )
+
+    first = mod.find_best_shift(**kwargs)
+    second = mod.find_best_shift(**kwargs)
+
+    assert first["best"]["rank_key"] == second["best"]["rank_key"]
+    assert first["best"]["phase_x_internal"] == pytest.approx(
+        second["best"]["phase_x_internal"]
+    )
+    assert first["best"]["phase_y_internal"] == pytest.approx(
+        second["best"]["phase_y_internal"]
+    )
+    assert first["best"]["shift_x_internal"] == pytest.approx(
+        second["best"]["shift_x_internal"]
+    )
+    assert first["best"]["shift_y_internal"] == pytest.approx(
+        second["best"]["shift_y_internal"]
+    )

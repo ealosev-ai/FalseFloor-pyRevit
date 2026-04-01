@@ -3,6 +3,7 @@
 from Autodesk.Revit.DB import BuiltInCategory  # type: ignore
 from Autodesk.Revit.Exceptions import OperationCanceledException  # type: ignore
 from Autodesk.Revit.UI.Selection import ObjectType  # type: ignore
+from floor_base import get_canonical_base_point  # type: ignore
 from floor_common import (  # type: ignore
     FloorOrPartSelectionFilter,
     get_id_value,
@@ -63,8 +64,10 @@ try:
         forms.alert(tr("element_not_floor"), title=TITLE_PREPARE)
         raise Exception("Element is not a floor")
 
-    # 2. Базовая точка (клик на плане)
-    base_point = uidoc.Selection.PickPoint(tr("base_point_prompt"))
+    # 2. Каноническая базовая точка по внешнему контуру
+    base_point = get_canonical_base_point(floor)
+    if not base_point:
+        raise Exception(tr("contour_face_not_found"))
 
     # 3. Ввод шага плитки
     step_x_mm = ask_mm_value(TITLE_PREPARE, tr("prompt_step_x"), 600)

@@ -1326,6 +1326,10 @@ def evaluate_shift_exact(
         "shift_y_internal": shift_y,
         "shift_x_mm": round(internal_to_mm(shift_x)),
         "shift_y_mm": round(internal_to_mm(shift_y)),
+        "phase_x_internal": shift_x,
+        "phase_y_internal": shift_y,
+        "phase_x_mm": round(internal_to_mm(shift_x)),
+        "phase_y_mm": round(internal_to_mm(shift_y)),
         "full_count": full_count,
         "viable_simple_count": viable_simple_count,
         "total_simple_count": total_simple_count,
@@ -1406,6 +1410,38 @@ def _normalize_shift(shift_internal, step_internal):
     if value < 0:  # pragma: no cover
         value += step_internal  # pragma: no cover
     return value
+
+
+def _phase_to_user_shift(phase_internal, original_base_internal, step_internal):
+    return _normalize_shift(phase_internal - original_base_internal, step_internal)
+
+
+def _result_sort_key(result):
+    return (
+        result["rank_key"],
+        result.get("phase_x_mm", result["shift_x_mm"]),
+        result.get("phase_y_mm", result["shift_y_mm"]),
+    )
+
+
+def _convert_results_to_user_offsets(
+    results,
+    original_base_x_raw,
+    original_base_y_raw,
+    step_x,
+    step_y,
+):
+    for result in results:
+        phase_x = result.get("phase_x_internal", result["shift_x_internal"])
+        phase_y = result.get("phase_y_internal", result["shift_y_internal"])
+        result["shift_x_internal"] = _phase_to_user_shift(
+            phase_x, original_base_x_raw, step_x
+        )
+        result["shift_y_internal"] = _phase_to_user_shift(
+            phase_y, original_base_y_raw, step_y
+        )
+        result["shift_x_mm"] = round(internal_to_mm(result["shift_x_internal"]))
+        result["shift_y_mm"] = round(internal_to_mm(result["shift_y_internal"]))
 
 
 def _build_local_shift_positions(
@@ -1756,6 +1792,11 @@ def find_best_shift(
     min_edge_clearance_mm=0,
     progress_callback=None,
 ):
+    original_base_x_raw = base_x_raw
+    original_base_y_raw = base_y_raw
+    search_base_x = 0.0
+    search_base_y = 0.0
+
     # Предвычисляем координаты рёбер вырезов/колонн для near-edge проверки
     # (внешний контур не учитываем — у стен дублирование нормально)
     edge_xs_mm = None
@@ -1774,8 +1815,8 @@ def find_best_shift(
     eval_kwargs = dict(
         step_x=step_x,
         step_y=step_y,
-        base_x_raw=base_x_raw,
-        base_y_raw=base_y_raw,
+        base_x_raw=search_base_x,
+        base_y_raw=search_base_y,
         outer_paths=outer_paths,
         hole_paths=hole_paths,
         holes_bboxes_mm=holes_bboxes_mm,
@@ -1802,12 +1843,12 @@ def find_best_shift(
     contour_xs, contour_ys = _extract_contour_vertex_coords(
         outer_paths, hole_paths if hole_paths.Count > 0 else None
     )
-    snap_x = _snap_shifts_for_axis(contour_xs, base_x_raw, step_x)
-    snap_y = _snap_shifts_for_axis(contour_ys, base_y_raw, step_y)
+    snap_x = _snap_shifts_for_axis(contour_xs, search_base_x, step_x)
+    snap_y = _snap_shifts_for_axis(contour_ys, search_base_y, step_y)
 
     # Парные snap-кандидаты по углам отверстий (колонн)
     hole_snap_pairs = _snap_pairs_for_holes(
-        hole_paths, base_x_raw, base_y_raw, step_x, step_y
+        hole_paths, search_base_x, search_base_y, step_x, step_y
     )
 
     shift_x_set = {}  # key: round(mm) -> internal value
@@ -1868,7 +1909,7 @@ def find_best_shift(
         and refine_shift_step_mm > 0
         and refine_radius_mm > 0
     ):
-        coarse_sorted = sorted(phase1_results, key=lambda r: r["rank_key"])
+        coarse_sorted = sorted(phase1_results, key=_result_sort_key)
         seeds = coarse_sorted[: min(refine_top_n, len(coarse_sorted))]
 
         refine_step_internal = mm_to_internal(refine_shift_step_mm)
@@ -1909,14 +1950,14 @@ def find_best_shift(
         progress_callback("phase3", 0, 0)
 
     all_results = list(all_results_map.values())
-    results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
+    results_sorted = sorted(all_results, key=_result_sort_key)
     _cr_seeds = results_sorted[: min(3, len(results_sorted))]
 
     for _cr_seed in _cr_seeds:
         _cr_pairs = _cut_round_deltas(
             _cr_seed,
-            base_x_raw,
-            base_y_raw,
+            search_base_x,
+            search_base_y,
             step_x,
             step_y,
             outer_paths,
@@ -1934,9 +1975,21 @@ def find_best_shift(
                 all_results_map[_cr_key] = _cr_result
 
     all_results = list(all_results_map.values())
-    results_sorted = sorted(all_results, key=lambda r: r["rank_key"])
+    _convert_results_to_user_offsets(
+        all_results,
+        original_base_x_raw,
+        original_base_y_raw,
+        step_x,
+        step_y,
+    )
+    results_sorted = sorted(all_results, key=_result_sort_key)
 
     top_results = results_sorted[: min(top_n, len(results_sorted))]
+    equivalent_top_results = [
+        result
+        for result in results_sorted
+        if result["rank_key"] == top_results[0]["rank_key"]
+    ][:5]
 
     # Диагностика: диапазон non_viable и complex по всем вариантам
     all_nv = [r["non_viable_count"] for r in all_results]
@@ -1949,6 +2002,7 @@ def find_best_shift(
     return {
         "best": top_results[0],
         "top_results": top_results,
+        "equivalent_top_results": equivalent_top_results,
         "results_sorted": results_sorted,
         "coarse_count": len(coarse_results),
         "hole_snap_pair_count": len(hole_snap_pairs),

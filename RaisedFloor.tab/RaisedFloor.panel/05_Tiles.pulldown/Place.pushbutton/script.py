@@ -144,18 +144,38 @@ def _get_string_param(el, name):
 
 
 def _collect_vent_cells(old_ids):
-    """Собирает set((row, col)) вентилируемых плиток из старого размещения."""
+    """Собирает set((row, col)) вентилируемых плиток в нормализованной сетке."""
+    all_cells = []
     vent_cells = set()
     for int_id in old_ids:
         try:
             el = doc.GetElement(ElementId(int_id))
-            if el and _get_int_param(el, P.VENTILATED) == 1:
-                row = _get_int_param(el, P.ROW)
-                col = _get_int_param(el, P.COLUMN)
+            if not el:
+                continue
+            row = _get_int_param(el, P.ROW)
+            col = _get_int_param(el, P.COLUMN)
+            all_cells.append((row, col))
+            if _get_int_param(el, P.VENTILATED) == 1:
                 vent_cells.add((row, col))
         except Exception:
             pass
-    return vent_cells
+    if not all_cells:
+        return vent_cells
+    min_row = min(row for row, _col in all_cells)
+    min_col = min(col for _row, col in all_cells)
+    return {(row - min_row, col - min_col) for row, col in vent_cells}
+
+
+def _raw_grid_index(coord, base_coord, step):
+    return int(round((coord - base_coord) / step))
+
+
+def _normalize_viable_cells(cells):
+    if not cells:
+        return 0, 0
+    min_col = min(cell["raw_col"] for cell in cells)
+    min_row = min(cell["raw_row"] for cell in cells)
+    return min_col, min_row
 
 
 def _find_vent_symbol(family):
@@ -286,6 +306,7 @@ try:
     keep_vent = False
 
     # --- Предварительный подсчёт ---
+    cells_ready = []
     cells_to_place = 0
     _diag_full = 0
     _diag_simple = 0
@@ -312,6 +333,15 @@ try:
             )
             if _is_viable(result):
                 cells_to_place += 1
+                cells_ready.append(
+                    {
+                        "x0": x0,
+                        "y0": y0,
+                        "result": result,
+                        "raw_col": _raw_grid_index(x0, base_x, step_x),
+                        "raw_row": _raw_grid_index(y0, base_y, step_y),
+                    }
+                )
             if result["is_full"]:
                 _diag_full += 1
             elif result["is_simple_cut"]:
@@ -328,6 +358,8 @@ try:
     if cells_to_place == 0:
         forms.alert(tr("tiles_no_cells"), title=TITLE)
         raise _Cancel()
+
+    min_col, min_row = _normalize_viable_cells(cells_ready)
 
     _diag_text = tr(
         "tiles_diag",
@@ -392,128 +424,112 @@ try:
         cut_complex_with_voids = 0
         cut_complex_unhandled = 0
 
-        for x0 in x_positions:
-            for y0 in y_positions:
+        for cell in cells_ready:
+            x0 = cell["x0"]
+            y0 = cell["y0"]
+            result = cell["result"]
+            # Все плитки в центре ячейки; подрезка через void.
+            cx = x0 + step_x / 2.0
+            cy = y0 + step_y / 2.0
+
+            instance = doc.Create.NewFamilyInstance(
+                XYZ(cx, cy, z0),
+                symbol,
+                level,
+                StructuralType.NonStructural,
+            )
+
+            # Валидация параметров после первого размещения
+            if not placed_ids:
+                doc.Regenerate()
+                refreshed = doc.GetElement(instance.Id)
+                if refreshed is not None:
+                    instance = refreshed
+                missing = _validate_params(instance, _REQUIRED_PARAMS)
+                if missing:
+                    forms.alert(
+                        tr("tiles_missing_params", params="\n".join(missing)),
+                        title=TITLE,
+                    )
+                    raise _Cancel()
+
+            # Нормализуем индексы так, чтобы первая реальная плитка начиналась с 0/0.
+            col = cell["raw_col"] - min_col
+            row = cell["raw_row"] - min_row
+            _set_instance_param(instance, P.COLUMN, col)
+            _set_instance_param(instance, P.ROW, row)
+            _set_instance_param(instance, P.MARK, "ПЛ.{}.{}".format(row, col))
+            _set_instance_param(instance, P.VENTILATED, 0)
+
+            # Базовый размер плитки = шаг сетки
+            _set_instance_param(instance, P.TILE_SIZE_X, step_x)
+            _set_instance_param(instance, P.TILE_SIZE_Y, step_y)
+
+            if result["is_full"]:
+                _set_instance_param(instance, P.TILE_TYPE, "Full")
+                _set_instance_param(instance, P.CUT_X, 0.0)
+                _set_instance_param(instance, P.CUT_Y, 0.0)
+                # Void hidden by formula (RF_Void*_X ≤ 1mm)
+                for vp in _VOID_PARAMS:
+                    _set_instance_param(instance, vp[0], _VOID_MIN)
+                    _set_instance_param(instance, vp[1], _VOID_MIN)
+                    _set_instance_param(instance, vp[2], 0.0)
+                    _set_instance_param(instance, vp[3], 0.0)
+                full_count += 1
+            elif result["is_simple_cut"] or result["is_complex_cut"]:
+                # Any cut — RF_Cut + voids work together
                 x0_mm = internal_to_mm(x0)
                 y0_mm = internal_to_mm(y0)
                 x1_mm = internal_to_mm(x0 + step_x)
                 y1_mm = internal_to_mm(y0 + step_y)
-
-                rect_path = make_rect_path64(x0_mm, y0_mm, x1_mm, y1_mm)
                 rect_bbox_mm = (x0_mm, y0_mm, x1_mm, y1_mm)
+                cut_x = result["size_x_mm"]
+                cut_y = result["size_y_mm"]
+                px = mm_to_internal(cut_x)
+                py = mm_to_internal(cut_y)
 
-                result = analyze_cell_exact(
-                    rect_path,
-                    rect_bbox_mm,
-                    exact_zone["outer_paths"],
-                    exact_zone["hole_paths"],
-                    exact_zone["holes_bboxes_mm"],
-                )
+                if result["is_simple_cut"]:
+                    _set_instance_param(instance, P.TILE_TYPE, "SimpleCut")
+                else:
+                    _set_instance_param(instance, P.TILE_TYPE, "ComplexCut")
+                _set_instance_param(instance, P.CUT_X, px)
+                _set_instance_param(instance, P.CUT_Y, py)
 
-                if not _is_viable(result):
-                    continue
-
-                # Все плитки в центре ячейки; подрезка через void.
-                cx = x0 + step_x / 2.0
-                cy = y0 + step_y / 2.0
-
-                instance = doc.Create.NewFamilyInstance(
-                    XYZ(cx, cy, z0),
-                    symbol,
-                    level,
-                    StructuralType.NonStructural,
-                )
-
-                # Валидация параметров после первого размещения
-                if not placed_ids:
-                    doc.Regenerate()
-                    refreshed = doc.GetElement(instance.Id)
-                    if refreshed is not None:
-                        instance = refreshed
-                    missing = _validate_params(instance, _REQUIRED_PARAMS)
-                    if missing:
-                        forms.alert(
-                            tr("tiles_missing_params", params="\n".join(missing)),
-                            title=TITLE,
-                        )
-                        raise _Cancel()
-
-                # Колонка/ряд от базы
-                col = int(round((x0 - base_x) / step_x))
-                row = int(round((y0 - base_y) / step_y))
-                _set_instance_param(instance, P.COLUMN, col)
-                _set_instance_param(instance, P.ROW, row)
-                _set_instance_param(instance, P.MARK, "ПЛ.{}.{}".format(row, col))
-                _set_instance_param(instance, P.VENTILATED, 0)
-
-                # Базовый размер плитки = шаг сетки
-                _set_instance_param(instance, P.TILE_SIZE_X, step_x)
-                _set_instance_param(instance, P.TILE_SIZE_Y, step_y)
-
-                if result["is_full"]:
-                    _set_instance_param(instance, P.TILE_TYPE, "Full")
-                    _set_instance_param(instance, P.CUT_X, 0.0)
-                    _set_instance_param(instance, P.CUT_Y, 0.0)
-                    # Void hidden by formula (RF_Void*_X ≤ 1mm)
+                # Voids = cell − clipped (до 3 вырезов)
+                clipped = result.get("clipped_paths")
+                num_voids = 0
+                if clipped:
+                    vdata = compute_voids(rect_bbox_mm, clipped)
+                    for vi, vp in enumerate(_VOID_PARAMS):
+                        if vi < len(vdata["voids"]):
+                            vw, vh, vox, voy = vdata["voids"][vi]
+                            _set_instance_param(instance, vp[0], mm_to_internal(vw))
+                            _set_instance_param(instance, vp[1], mm_to_internal(vh))
+                            _set_instance_param(instance, vp[2], mm_to_internal(vox))
+                            _set_instance_param(instance, vp[3], mm_to_internal(voy))
+                            num_voids += 1
+                        else:
+                            _set_instance_param(instance, vp[0], _VOID_MIN)
+                            _set_instance_param(instance, vp[1], _VOID_MIN)
+                            _set_instance_param(instance, vp[2], 0.0)
+                            _set_instance_param(instance, vp[3], 0.0)
+                    if vdata["has_unhandled_voids"]:
+                        cut_complex_unhandled += 1
+                else:
                     for vp in _VOID_PARAMS:
                         _set_instance_param(instance, vp[0], _VOID_MIN)
                         _set_instance_param(instance, vp[1], _VOID_MIN)
                         _set_instance_param(instance, vp[2], 0.0)
                         _set_instance_param(instance, vp[3], 0.0)
-                    full_count += 1
-                elif result["is_simple_cut"] or result["is_complex_cut"]:
-                    # Any cut — RF_Cut + voids work together
-                    cut_x = result["size_x_mm"]
-                    cut_y = result["size_y_mm"]
-                    px = mm_to_internal(cut_x)
-                    py = mm_to_internal(cut_y)
 
-                    if result["is_simple_cut"]:
-                        _set_instance_param(instance, P.TILE_TYPE, "SimpleCut")
-                    else:
-                        _set_instance_param(instance, P.TILE_TYPE, "ComplexCut")
-                    _set_instance_param(instance, P.CUT_X, px)
-                    _set_instance_param(instance, P.CUT_Y, py)
+                if result["is_simple_cut"]:
+                    cut_simple_count += 1
+                else:
+                    cut_complex_count += 1
+                    if num_voids > 0:
+                        cut_complex_with_voids += 1
 
-                    # Voids = cell − clipped (до 3 вырезов)
-                    clipped = result.get("clipped_paths")
-                    num_voids = 0
-                    if clipped:
-                        vdata = compute_voids(rect_bbox_mm, clipped)
-                        for vi, vp in enumerate(_VOID_PARAMS):
-                            if vi < len(vdata["voids"]):
-                                vw, vh, vox, voy = vdata["voids"][vi]
-                                _set_instance_param(instance, vp[0], mm_to_internal(vw))
-                                _set_instance_param(instance, vp[1], mm_to_internal(vh))
-                                _set_instance_param(
-                                    instance, vp[2], mm_to_internal(vox)
-                                )
-                                _set_instance_param(
-                                    instance, vp[3], mm_to_internal(voy)
-                                )
-                                num_voids += 1
-                            else:
-                                _set_instance_param(instance, vp[0], _VOID_MIN)
-                                _set_instance_param(instance, vp[1], _VOID_MIN)
-                                _set_instance_param(instance, vp[2], 0.0)
-                                _set_instance_param(instance, vp[3], 0.0)
-                        if vdata["has_unhandled_voids"]:
-                            cut_complex_unhandled += 1
-                    else:
-                        for vp in _VOID_PARAMS:
-                            _set_instance_param(instance, vp[0], _VOID_MIN)
-                            _set_instance_param(instance, vp[1], _VOID_MIN)
-                            _set_instance_param(instance, vp[2], 0.0)
-                            _set_instance_param(instance, vp[3], 0.0)
-
-                    if result["is_simple_cut"]:
-                        cut_simple_count += 1
-                    else:
-                        cut_complex_count += 1
-                        if num_voids > 0:
-                            cut_complex_with_voids += 1
-
-                placed_ids.append(str(instance.Id.Value))
+            placed_ids.append(str(instance.Id.Value))
 
         # Сохранить ID для будущего удаления
         ids_string = ";".join(placed_ids)

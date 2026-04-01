@@ -139,6 +139,13 @@ try:
             best["shift_y_mm"],
         )
     )
+    equivalent_count = len(search.get("equivalent_top_results", []))
+    if equivalent_count > 1:
+        reporter.info(
+            "Equivalent best layouts: {} (deterministic phase tie-break applied)".format(
+                equivalent_count
+            )
+        )
     reporter.info("Variants checked: {}".format(search.get("total_count", "?")))
     reporter.info("Evaluation time: {:.1f}s".format(_elapsed))
 
