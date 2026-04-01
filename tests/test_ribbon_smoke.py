@@ -271,7 +271,7 @@ def _ensure_clipper_stubs():
 
 
 # ── Load floor_* exports & signatures ────────────────────
-_CACHE = {}
+_CACHE: dict = {}
 
 
 def _get_floor_api():
