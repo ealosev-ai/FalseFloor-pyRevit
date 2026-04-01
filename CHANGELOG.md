@@ -36,6 +36,7 @@
 - Updated parameter, setup, layout, stringer, support, tile, and clear commands to use the same runtime context access pattern.
 
 ---
+
 ## 2026-03-21 (v1.4.1)
 
 ### Changed
@@ -49,6 +50,7 @@
 - README explicitly states that end-user release ZIP does not include dev-only content.
 
 ---
+
 ## 2026-03-21 (v1.4.0)
 
 ### Added — Стрингеры: конструктивные улучшения
@@ -158,4 +160,3 @@
 - Families must be re-saved in Revit Family Editor with the new RF_ parameter names.
 - Families are not backward-compatible across Revit versions. If the package families are saved in Revit 2026, Revit 2024 cannot open them.
 - Runtime dialogs/reports are fully bilingual.
-

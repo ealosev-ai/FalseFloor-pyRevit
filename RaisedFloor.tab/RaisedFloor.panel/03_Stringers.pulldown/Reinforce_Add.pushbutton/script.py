@@ -507,14 +507,10 @@ def _get_support_symbol():
 
 def _calc_z_offsets(floor, level, sym_upper, sym_lower):
     ph_upper = (
-        (get_double_param(sym_upper, P.PROFILE_HEIGHT) or 0.0)
-        if sym_upper
-        else 0.0
+        (get_double_param(sym_upper, P.PROFILE_HEIGHT) or 0.0) if sym_upper else 0.0
     )
     ph_lower = (
-        (get_double_param(sym_lower, P.PROFILE_HEIGHT) or 0.0)
-        if sym_lower
-        else 0.0
+        (get_double_param(sym_lower, P.PROFILE_HEIGHT) or 0.0) if sym_lower else 0.0
     )
     total_h = get_double_param(floor, P.FLOOR_HEIGHT) or 0.0
     tile_t = get_double_param(floor, P.TILE_THICKNESS) or 0.0

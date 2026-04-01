@@ -110,13 +110,11 @@ def _print_project_result(reporter, result):
 
 
 def _summarize_family_result(result):
-    return (
-        "{}: migrated={}, added={}, errors={}".format(
-            result.get("family_name", "<unknown>"),
-            len(result.get("replaced", [])),
-            len(result.get("added", [])),
-            len(result.get("errors", [])),
-        )
+    return "{}: migrated={}, added={}, errors={}".format(
+        result.get("family_name", "<unknown>"),
+        len(result.get("replaced", [])),
+        len(result.get("added", [])),
+        len(result.get("errors", [])),
     )
 
 
@@ -288,7 +286,9 @@ def _run_project(doc):
             )
             allow_destructive = bool(destructive_confirm)
             if allow_destructive:
-                reporter.write("Разрешён maintenance fallback: Remove+Add.", level="warn")
+                reporter.write(
+                    "Разрешён maintenance fallback: Remove+Add.", level="warn"
+                )
             else:
                 reporter.write("Выбран безопасный режим: только ReplaceParameter.")
 
@@ -373,7 +373,9 @@ def _run_project(doc):
                 title=TITLE,
             )
         else:
-            reporter.write("Миграция project GUIDs отменена пользователем.", level="warn")
+            reporter.write(
+                "Миграция project GUIDs отменена пользователем.", level="warn"
+            )
     else:
         reporter.stage("Проектные параметры")
         reporter.write("Проектные GUID в порядке — миграция не требуется.")
@@ -397,7 +399,9 @@ except Exception as ex:
     if str(ex) != "cancel":
         detail_note = ""
         try:
-            reporter = ScriptReporter.from_pyrevit(title=TITLE, log_stem="migrate_guids")
+            reporter = ScriptReporter.from_pyrevit(
+                title=TITLE, log_stem="migrate_guids"
+            )
             reporter.write("Unhandled error: {}".format(str(ex)), level="error")
             reporter.write(traceback.format_exc(), level="error")
             detail_note = _detail_note(reporter)

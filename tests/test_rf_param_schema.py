@@ -22,9 +22,7 @@ def test_rf_parameter_guids_are_unique():
 
 
 def test_rfparams_constants_match_guid_keys():
-    expected = {
-        name[3:].upper(): name for name in rf_param_schema.RF_PARAMETER_GUIDS
-    }
+    expected = {name[3:].upper(): name for name in rf_param_schema.RF_PARAMETER_GUIDS}
     actual = {
         attr: getattr(rf_param_schema.RFParams, attr)
         for attr in dir(rf_param_schema.RFParams)
@@ -98,6 +96,7 @@ def test_collect_project_parameter_guid_mismatches_uses_shared_parameter_element
     prev = sys.modules.get("Autodesk.Revit.DB")
     sys.modules["Autodesk.Revit.DB"] = db_mod
     try:
+
         class _Doc:
             _shared_params = [
                 _SharedParam("RF_Step_X", "aa5ed481-5cf0-5933-b251-3a290396bb12"),
@@ -191,11 +190,7 @@ def test_ensure_canonical_shared_parameter_file_uses_local_writable_copy(monkeyp
     os.makedirs(bundle_dir)
 
     bundled_path = os.path.join(bundle_dir, "RaisedFloor.sharedparameters.txt")
-    bundled_content = (
-        "# bundled copy\n"
-        "*META\tVERSION\tMINVERSION\n"
-        "META\t2\t1\n"
-    )
+    bundled_content = "# bundled copy\n*META\tVERSION\tMINVERSION\nMETA\t2\t1\n"
     with open(bundled_path, "w") as fp:
         fp.write(bundled_content)
 

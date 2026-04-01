@@ -434,9 +434,7 @@ def get_exact_zone_for_floor(doc, floor):
     contour_ids = parse_ids_from_string(contour_ids_string)
     if not contour_ids:
         raise Exception(
-            "На перекрытии нет {}. Сначала запусти 'Контур'.".format(
-                P.CONTOUR_LINES_ID
-            )
+            "На перекрытии нет {}. Сначала запусти 'Контур'.".format(P.CONTOUR_LINES_ID)
         )
 
     contour_elements = []

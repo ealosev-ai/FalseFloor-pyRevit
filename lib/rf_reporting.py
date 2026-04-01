@@ -69,7 +69,11 @@ def _cleanup_old_logs(folder, max_age_days=_LOG_RETENTION_DAYS):
 
 def _build_default_log_path(title=None, log_stem=None):
     stem = _slugify(log_stem or title or "report")
-    root = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or os.path.expanduser("~")
+    root = (
+        os.environ.get("LOCALAPPDATA")
+        or os.environ.get("TEMP")
+        or os.path.expanduser("~")
+    )
     folder = os.path.join(root, "RaisedFloor.extension", "logs")
     try:
         if not os.path.isdir(folder):
@@ -329,7 +333,7 @@ class ScriptReporter(object):
         line = "[{}] [{}] {}".format(timestamp, level.upper(), text)
         try:
             handle.write(_to_text(line))
-            handle.write(u"\n")
+            handle.write("\n")
             handle.flush()
             return True
         except Exception:
@@ -337,7 +341,7 @@ class ScriptReporter(object):
 
     def _write_stdout(self, text):
         try:
-            sys.stdout.write(_to_text(text) + u"\n")
+            sys.stdout.write(_to_text(text) + "\n")
             return True
         except Exception:
             return False

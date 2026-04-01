@@ -66,6 +66,7 @@ RF_PARAMETER_GUIDS = {
 
 class RFParams(object):
     """Canonical RF parameter names."""
+
     STEP_X = "RF_Step_X"
     STEP_Y = "RF_Step_Y"
     BASE_X = "RF_Base_X"
@@ -121,9 +122,7 @@ class RFParams(object):
 
 
 def _validate_rfparams_constants():
-    expected = {
-        name[3:].upper(): name for name in sorted(RF_PARAMETER_GUIDS)
-    }
+    expected = {name[3:].upper(): name for name in sorted(RF_PARAMETER_GUIDS)}
     actual = {
         attr: getattr(RFParams, attr)
         for attr in dir(RFParams)
@@ -137,9 +136,7 @@ def _validate_rfparams_constants():
     missing = sorted(set(expected) - set(actual))
     extra = sorted(set(actual) - set(expected))
     mismatched = sorted(
-        attr
-        for attr in expected
-        if attr in actual and actual[attr] != expected[attr]
+        attr for attr in expected if attr in actual and actual[attr] != expected[attr]
     )
     if missing:
         details.append("missing={}".format(", ".join(missing)))
@@ -216,8 +213,8 @@ RF_INTEGER_PARAM_NAMES = (
     RFParams.VENTILATED,
 )
 
-_string_name_set = set(RF_PARAMETER_GUIDS) - set(RF_DOUBLE_PARAM_NAMES) - set(
-    RF_INTEGER_PARAM_NAMES
+_string_name_set = (
+    set(RF_PARAMETER_GUIDS) - set(RF_DOUBLE_PARAM_NAMES) - set(RF_INTEGER_PARAM_NAMES)
 )
 RF_STRING_PARAM_NAMES = tuple(
     name for name in RF_PARAMETER_GUIDS if name in _string_name_set
@@ -338,6 +335,7 @@ RF_SUPPORT_FAMILY_PARAM_NAMES = (
     RFParams.BASE_SIZE,
     RFParams.HEAD_SIZE,
 )
+
 
 def _unique_names(names):
     seen = set()
@@ -552,7 +550,9 @@ def collect_definition_guid_mismatches(definitions_by_name, allowed_names=None):
     return mismatches
 
 
-def collect_project_parameter_guid_mismatches(doc, allowed_names=None, bound_names=None):
+def collect_project_parameter_guid_mismatches(
+    doc, allowed_names=None, bound_names=None
+):
     """Inspect loaded SharedParameterElements and report canonical GUID mismatches.
 
     Returns tuples: (name, actual_guid_marker, expected_guid)

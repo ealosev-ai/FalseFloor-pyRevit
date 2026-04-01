@@ -55,6 +55,7 @@ _MARKER_RING_HALF = GRID_MARKER_RING_HALF_FT
 _INTERNAL_TO_MM = MM_PER_FOOT
 _SCALE = CLIPPER_SCALE
 
+
 def _get_stringer_clearance_mm():
     """Читает макс. ширину профиля стрингера (мм) для near-edge подсветки."""
     doc = get_doc()
@@ -300,9 +301,7 @@ def _collect_contour_curves(floor):
     Возвращает (old_ids, curves). Кривые клонированы, чтобы не зависеть
     от состояния документа внутри транзакции.
     """
-    old_contour_ids = parse_ids_from_string(
-        get_string_param(floor, P.CONTOUR_LINES_ID)
-    )
+    old_contour_ids = parse_ids_from_string(get_string_param(floor, P.CONTOUR_LINES_ID))
     if not old_contour_ids:
         return [], []
 

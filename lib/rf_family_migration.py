@@ -26,8 +26,18 @@ FAMILY_PARAMS = [
     ("RF_Row", StorageType.Integer, "Ряд в сетке", True),
     ("RF_Mark", StorageType.String, "Марка элемента ФП", True),
     ("RF_Tile_Type", StorageType.String, "Тип плитки (Полная/Подрезка/Сложная)", True),
-    ("RF_Tile_Size_X", StorageType.Double, "Базовый размер плитки X = шаг сетки (ft)", True),
-    ("RF_Tile_Size_Y", StorageType.Double, "Базовый размер плитки Y = шаг сетки (ft)", True),
+    (
+        "RF_Tile_Size_X",
+        StorageType.Double,
+        "Базовый размер плитки X = шаг сетки (ft)",
+        True,
+    ),
+    (
+        "RF_Tile_Size_Y",
+        StorageType.Double,
+        "Базовый размер плитки Y = шаг сетки (ft)",
+        True,
+    ),
     ("RF_Cut_X", StorageType.Double, "Размер подрезки X (ft)", True),
     ("RF_Cut_Y", StorageType.Double, "Размер подрезки Y (ft)", True),
     ("RF_Void1_X", StorageType.Double, "Вырез ширина", True),
@@ -285,9 +295,7 @@ def _replace_mismatched_params_no_tx(
                 subtx.RollBack()
             except Exception:
                 pass
-            errors.append(
-                "{}: Remove+Add fallback failed: {}".format(name, str(ex))
-            )
+            errors.append("{}: Remove+Add fallback failed: {}".format(name, str(ex)))
 
 
 def _try_replace_parameter(fam_mgr, old_param, ext_def, group_id, is_instance):

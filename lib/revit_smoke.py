@@ -37,7 +37,9 @@ def get_extension_root(start_path):
 
         parent = os.path.dirname(current)
         if parent == current:
-            raise ValueError("Could not detect extension root from '{}'".format(start_path))
+            raise ValueError(
+                "Could not detect extension root from '{}'".format(start_path)
+            )
         current = parent
 
 
@@ -107,7 +109,9 @@ class SmokeReport(object):
             reporter.write("")
 
     def render_to_output(self, output, title):
-        reporter = ScriptReporter(title=title, output=output, logger=None, log_path=None)
+        reporter = ScriptReporter(
+            title=title, output=output, logger=None, log_path=None
+        )
         self.render(reporter, title)
 
 
@@ -125,7 +129,9 @@ def _ensure_paths(extension_root):
 
 
 def _check_environment(report, doc, extension_root, reporter):
-    report.add("Environment", "pass", "Revit host available", doc.Application.VersionName)
+    report.add(
+        "Environment", "pass", "Revit host available", doc.Application.VersionName
+    )
     report.add("Environment", "pass", "Extension root detected", extension_root)
 
     families_dir = os.path.join(extension_root, "Families")
@@ -152,13 +158,17 @@ def _check_environment(report, doc, extension_root, reporter):
     if failed:
         report.add("Environment", "fail", "Core module imports", " | ".join(failed))
     else:
-        report.add("Environment", "pass", "Core module imports", ", ".join(core_modules))
+        report.add(
+            "Environment", "pass", "Core module imports", ", ".join(core_modules)
+        )
 
     sink_labels = reporter.get_sink_labels()
     if sink_labels:
         report.add("Environment", "pass", "Reporting surfaces", ", ".join(sink_labels))
     else:
-        report.add("Environment", "warn", "Reporting surfaces", "No reporting sinks ready")
+        report.add(
+            "Environment", "warn", "Reporting surfaces", "No reporting sinks ready"
+        )
     if reporter.log_path:
         report.add("Environment", "info", "Text log file", reporter.log_path)
 
@@ -172,7 +182,12 @@ def _check_document_context(report, doc):
 
     title = getattr(doc, "Title", "") or "<untitled>"
     if doc.IsFamilyDocument:
-        report.add("Document Context", "warn", "Document mode", "Family document: {}".format(title))
+        report.add(
+            "Document Context",
+            "warn",
+            "Document mode",
+            "Family document: {}".format(title),
+        )
         return
 
     report.add("Document Context", "pass", "Document mode", "Project: {}".format(title))

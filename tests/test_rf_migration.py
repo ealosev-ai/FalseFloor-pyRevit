@@ -124,9 +124,7 @@ class TestTryReplaceParameter:
         sys_mock.Boolean = MagicMock()
         sys_mock.Object = MagicMock()
 
-        with patch.dict(
-            "sys.modules", {"clr": clr_mock, "System": sys_mock}
-        ):
+        with patch.dict("sys.modules", {"clr": clr_mock, "System": sys_mock}):
             # Make reflection fail too
             mock_type = MagicMock()
             mock_type.GetMethod = MagicMock(return_value=None)
@@ -486,7 +484,9 @@ class TestStorageTypeFromSPE:
 
         db_mod = sys.modules["Autodesk.Revit.DB"]
 
-        assert mod._get_expected_storage_type("RF_Tiles_ID") == db_mod.StorageType.String
+        assert (
+            mod._get_expected_storage_type("RF_Tiles_ID") == db_mod.StorageType.String
+        )
         assert mod._get_expected_storage_type("RF_Step_X") == db_mod.StorageType.Double
         assert mod._get_expected_storage_type("RF_Column") == db_mod.StorageType.Integer
 
@@ -518,9 +518,7 @@ class TestDryRunPurity:
 
         app = MagicMock()
 
-        with patch.object(
-            mod, "ensure_schema_definitions"
-        ) as mock_ensure:
+        with patch.object(mod, "ensure_schema_definitions") as mock_ensure:
             result = mod.migrate_family_doc(
                 fam_doc, app, dry_run=True, family_name_hint="RF_Support"
             )
@@ -590,7 +588,9 @@ class TestMigrateFamilyDocExecution:
             yield "canonical"
 
         with patch.object(mod, "Transaction", side_effect=[replace_tx, add_tx]):
-            with patch.object(mod, "use_canonical_shared_parameter_file", _fake_context):
+            with patch.object(
+                mod, "use_canonical_shared_parameter_file", _fake_context
+            ):
                 with patch.object(
                     mod,
                     "_load_canonical_defs",
@@ -647,7 +647,9 @@ class TestMigrateFamilyDocExecution:
             yield "canonical"
 
         with patch.object(mod, "Transaction", side_effect=[replace_tx, add_tx]):
-            with patch.object(mod, "use_canonical_shared_parameter_file", _fake_context):
+            with patch.object(
+                mod, "use_canonical_shared_parameter_file", _fake_context
+            ):
                 with patch.object(
                     mod,
                     "_load_canonical_defs",

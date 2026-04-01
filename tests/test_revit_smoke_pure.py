@@ -17,11 +17,14 @@ class _DummyOutput(object):
 
 
 def test_get_extension_root_walks_up_from_button_script():
+    # Строим путь относительно реального расположения extension root
+    # (tests/ находится внутри RaisedFloor.extension/)
+    extension_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     start = os.path.join(
-        "D:\\pyRevit\\RaisedFloor.extension",
+        extension_root,
         "RaisedFloor.tab",
         "RaisedFloor.panel",
-        "99_Tests.pulldown11",
+        "99_Tests.pulldown",
         "Run Tests.pushbutton",
         "script.py",
     )

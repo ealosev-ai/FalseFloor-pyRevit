@@ -304,7 +304,9 @@ except _Cancel:
         reporter.warning("Operation cancelled")
         reporter.finish()
         reporter_done = True
-    forms.alert(_append_log_path(tr("operation_cancelled"), reporter), title=TITLE_SHIFT)
+    forms.alert(
+        _append_log_path(tr("operation_cancelled"), reporter), title=TITLE_SHIFT
+    )
 except Exception as ex:
     if reporter and not reporter_done:
         reporter.error(str(ex))

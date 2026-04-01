@@ -146,7 +146,11 @@ def summarize_zone_membership(zone_ids, top_ids, bottom_ids, support_ids):
     allowed.update(summarize_ids(bottom_ids)["unique_ids"])
     allowed.update(summarize_ids(support_ids)["unique_ids"])
     return tuple(
-        sorted(int_id for int_id in summarize_ids(zone_ids)["unique_ids"] if int_id not in allowed)
+        sorted(
+            int_id
+            for int_id in summarize_ids(zone_ids)["unique_ids"]
+            if int_id not in allowed
+        )
     )
 
 
@@ -260,7 +264,9 @@ def _collect_generated_instance_ids(doc):
         RFFamilies.SUPPORT: [],
     }
     for instance in (
-        FilteredElementCollector(doc).OfClass(FamilyInstance).WhereElementIsNotElementType()
+        FilteredElementCollector(doc)
+        .OfClass(FamilyInstance)
+        .WhereElementIsNotElementType()
     ):
         family_name = _get_element_family_name(instance)
         if family_name in result:
@@ -273,7 +279,9 @@ def _audit_floor_context(report, floor, record):
 
     total_linked = 0
     for spec in LAYOUT_ID_SPECS:
-        total_linked += summarize_ids(record["param_ids"].get(spec["param"], []))["count"]
+        total_linked += summarize_ids(record["param_ids"].get(spec["param"], []))[
+            "count"
+        ]
     total_linked += summarize_ids(record.get("zone_ids") or [])["count"]
 
     report.add("Floor Context", "info", "Tracked references", str(total_linked))
@@ -446,7 +454,9 @@ def _audit_reinforcement_zones(report, doc, record):
             "Reinforcement Zones",
             "warn",
             "Zone ownership",
-            "Not present in stored stringer/support ids: {}".format(_format_id_list(untracked)),
+            "Not present in stored stringer/support ids: {}".format(
+                _format_id_list(untracked)
+            ),
         )
 
     if not missing_zone_ids and not untracked:
@@ -459,7 +469,9 @@ def _audit_reinforcement_zones(report, doc, record):
 
 
 def _audit_global_generated_instances(report, doc, owner_index):
-    orphan_map = summarize_unowned_instances(_collect_generated_instance_ids(doc), owner_index)
+    orphan_map = summarize_unowned_instances(
+        _collect_generated_instance_ids(doc), owner_index
+    )
     if not orphan_map:
         report.add(
             "Global Ownership",

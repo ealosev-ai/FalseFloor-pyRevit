@@ -377,9 +377,7 @@ def migrate_project_parameter_guids(doc, app, dry_run=False):
                 continue
             param_type = get_storage_type_id(st)
             if param_type is None:
-                result["errors"].append(
-                    "{}: Cannot determine param_type".format(name)
-                )
+                result["errors"].append("{}: Cannot determine param_type".format(name))
                 continue
             definition_specs.append(
                 {"name": name, "description": "", "param_type": param_type}
@@ -432,9 +430,7 @@ def migrate_project_parameter_guids(doc, app, dry_run=False):
                 if ok:
                     result["migrated"].append((name, actual_guid, expected_guid))
                 else:
-                    result["errors"].append(
-                        "{}: Insert returned False".format(name)
-                    )
+                    result["errors"].append("{}: Insert returned False".format(name))
 
             if result["errors"]:
                 t2.RollBack()

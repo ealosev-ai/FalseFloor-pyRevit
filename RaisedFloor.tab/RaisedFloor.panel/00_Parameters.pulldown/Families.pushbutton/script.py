@@ -51,8 +51,18 @@ FAMILY_PARAMS = [
     (P.ROW, StorageType.Integer, "Ряд в сетке", True),
     (P.MARK, StorageType.String, "Марка элемента ФП", True),
     (P.TILE_TYPE, StorageType.String, "Тип плитки (Полная/Подрезка/Сложная)", True),
-    (P.TILE_SIZE_X, StorageType.Double, "Базовый размер плитки X = шаг сетки (ft)", True),
-    (P.TILE_SIZE_Y, StorageType.Double, "Базовый размер плитки Y = шаг сетки (ft)", True),
+    (
+        P.TILE_SIZE_X,
+        StorageType.Double,
+        "Базовый размер плитки X = шаг сетки (ft)",
+        True,
+    ),
+    (
+        P.TILE_SIZE_Y,
+        StorageType.Double,
+        "Базовый размер плитки Y = шаг сетки (ft)",
+        True,
+    ),
     (P.CUT_X, StorageType.Double, "Размер подрезки X (ft)", True),
     (P.CUT_Y, StorageType.Double, "Размер подрезки Y (ft)", True),
     (P.VOID1_X, StorageType.Double, "Вырез ширина", True),
@@ -398,7 +408,9 @@ def _run_in_family_editor():
     canonical_path = get_canonical_shared_parameter_file_path()
     reporter.info("Family document: {}".format(fam_name or "<unnamed>"))
     reporter.info("Canonical shared parameter file: {}".format(canonical_path))
-    reporter.info("Shared parameter file exists: {}".format(os.path.exists(canonical_path)))
+    reporter.info(
+        "Shared parameter file exists: {}".format(os.path.exists(canonical_path))
+    )
     missing_before = _get_missing_family_param_names(doc, allowed)
     reporter.info("Expected RF params: {}".format(len(allowed)))
     reporter.info("Missing before add: {}".format(len(missing_before)))
@@ -411,9 +423,7 @@ def _run_in_family_editor():
     if guid_mismatches:
         confirm = forms.alert(
             "Обнаружены RF_ параметры с неканоническими GUID ({} шт.).\n"
-            "Выполнить миграцию через ReplaceParameter?".format(
-                len(guid_mismatches)
-            ),
+            "Выполнить миграцию через ReplaceParameter?".format(len(guid_mismatches)),
             title=TITLE,
             yes=True,
             no=True,
