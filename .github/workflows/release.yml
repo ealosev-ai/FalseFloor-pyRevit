@@ -1,0 +1,155 @@
+# Release workflow: triggered ONLY by version tags (v*).
+# No paths filter — tag push always triggers the full pipeline.
+
+name: Release
+
+on:
+    push:
+        tags:
+            - 'v*'
+
+jobs:
+    test:
+        name: Test Python ${{ matrix.python-version }}
+        runs-on: windows-latest
+
+        strategy:
+            fail-fast: false
+            matrix:
+                python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python-version }}
+                  cache: 'pip'
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
+
+            - name: Run pytest
+              run: |
+                  pytest tests/ -m "not revit" -v --tb=short --cov=lib --cov-fail-under=60 --cov-report=term-missing
+              env:
+                  PYTHONPATH: ${{ github.workspace }};${{ github.workspace }}/lib
+
+    lint:
+        name: Lint Code
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.11'
+                  cache: 'pip'
+
+            - name: Install linting tools
+              run: pip install ruff mypy
+
+            - name: Run Ruff linter
+              run: ruff check lib/ RaisedFloor.tab/ tests/
+
+            - name: Run Ruff formatter check
+              run: ruff format --check lib/ RaisedFloor.tab/ tests/
+
+            - name: Run MyPy type checker
+              run: mypy lib/ --ignore-missing-imports --no-error-summary
+              continue-on-error: true
+
+    build:
+        name: Build Release Package
+        runs-on: windows-latest
+        needs: [test, lint]
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Create release archive
+              run: |
+                  $version = "${{ github.ref_name }}"
+                  $archiveName = "RaisedFloor.extension-$version.zip"
+                  $stageDir = Join-Path $PWD "_package"
+                  if (Test-Path $stageDir) {
+                    Remove-Item $stageDir -Recurse -Force
+                  }
+                  New-Item -ItemType Directory -Path $stageDir | Out-Null
+
+                  $items = @("lib", "RaisedFloor.tab", "Families", "resources", "README.md", "LICENSE", "CHANGELOG.md")
+                  foreach ($item in $items) {
+                    if (Test-Path $item) {
+                      Copy-Item $item -Destination $stageDir -Recurse -Force
+                    }
+                  }
+
+                  # Remove dev-only test button
+                  $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown"
+                  if (Test-Path $testsPanel) {
+                    Remove-Item $testsPanel -Recurse -Force
+                  }
+
+                  # Drop caches and bytecode
+                  Get-ChildItem -Path $stageDir -Recurse -Force -Directory |
+                    Where-Object { $_.Name -in @("__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache") } |
+                    Remove-Item -Recurse -Force
+                  Get-ChildItem -Path $stageDir -Recurse -Force -File |
+                    Where-Object { $_.Extension -in @(".pyc", ".pyo") } |
+                    Remove-Item -Force
+
+                  Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $archiveName -Force
+                  echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+              shell: pwsh
+
+            - name: Upload release artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: release-package
+                  path: ${{ env.ARCHIVE_NAME }}
+                  retention-days: 30
+
+    release:
+        name: Publish GitHub Release
+        runs-on: windows-latest
+        needs: [build]
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Download release artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: release-package
+
+            - name: Extract changelog for this version
+              id: changelog
+              shell: pwsh
+              run: |
+                  $content = Get-Content CHANGELOG.md -Raw
+                  $match = [regex]::Match($content, '(?s)(## .*?)(?=\n## |\z)')
+                  $section = if ($match.Success) { $match.Groups[1].Value.Trim() } else { "See CHANGELOG.md" }
+                  $section | Out-File -FilePath release_notes.md -Encoding utf8
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ github.ref_name }}
+                  name: '${{ github.ref_name }}'
+                  body_path: release_notes.md
+                  files: '*.zip'
+                  draft: false
+                  prerelease: false

@@ -1,13 +1,11 @@
-# GitHub Actions CI/CD Workflow for RaisedFloor.extension
-# Tests the pyRevit extension on multiple Python versions
+# CI workflow: runs on branch pushes and PRs with paths filter.
+# Release workflow lives in release.yml (triggered by tags, no paths filter).
 
-name: CI/CD
+name: CI
 
 on:
     push:
         branches: [main, develop]
-        tags:
-            - 'v*'
         paths:
             - 'lib/**/*.py'
             - 'tests/**/*.py'
@@ -34,7 +32,6 @@ on:
             - 'pytest.ini'
             - '.github/workflows/**/*.yml'
 
-    # Allow manual workflow runs
     workflow_dispatch:
 
 jobs:
@@ -109,105 +106,6 @@ jobs:
               run: mypy lib/ --ignore-missing-imports --no-error-summary
               continue-on-error: true
 
-    build:
-        name: Build Release Package
-        runs-on: windows-latest
-        needs: [test, lint]
-        if: github.event_name == 'push'
-
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-
-            - name: Create release archive
-              run: |
-                  # Имя архива: по тегу (если push тега) или по дате (если push ветки)
-                  if ($env:GITHUB_REF -match '^refs/tags/(v.+)$') {
-                    $version = $Matches[1]
-                  } else {
-                    $version = Get-Date -Format "yyyy-MM-dd"
-                  }
-                  $archiveName = "RaisedFloor.extension-$version.zip"
-                  $stageDir = Join-Path $PWD "_package"
-                  if (Test-Path $stageDir) {
-                    Remove-Item $stageDir -Recurse -Force
-                  }
-                  New-Item -ItemType Directory -Path $stageDir | Out-Null
-
-                  # Runtime-only package for end users.
-                  $items = @("lib", "RaisedFloor.tab", "Families", "resources", "README.md", "LICENSE", "CHANGELOG.md")
-                  foreach ($item in $items) {
-                    if (Test-Path $item) {
-                      Copy-Item $item -Destination $stageDir -Recurse -Force
-                    }
-                  }
-
-                  # Dev-only test runner button should not ship in production zip.
-                  $testsPanel = Join-Path $stageDir "RaisedFloor.tab\RaisedFloor.panel\99_Tests.pulldown"
-                  if (Test-Path $testsPanel) {
-                    Remove-Item $testsPanel -Recurse -Force
-                  }
-
-                  # Drop local caches and bytecode from the staged runtime package.
-                  Get-ChildItem -Path $stageDir -Recurse -Force -Directory |
-                    Where-Object { $_.Name -in @("__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache") } |
-                    Remove-Item -Recurse -Force
-                  Get-ChildItem -Path $stageDir -Recurse -Force -File |
-                    Where-Object { $_.Extension -in @(".pyc", ".pyo") } |
-                    Remove-Item -Force
-
-                  Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $archiveName -Force
-                  echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
-              shell: pwsh
-              working-directory: .
-
-            - name: Upload release artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: release-package
-                  path: ${{ env.ARCHIVE_NAME }}
-                  retention-days: 30
-
-    release:
-        name: Publish GitHub Release
-        runs-on: windows-latest
-        needs: [build]
-        if: startsWith(github.ref, 'refs/tags/v')
-        permissions:
-            contents: write
-
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-
-            - name: Download release artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: release-package
-
-            - name: Extract changelog for this version
-              id: changelog
-              shell: pwsh
-              run: |
-                  $tag = "${{ github.ref_name }}"
-                  $content = Get-Content CHANGELOG.md -Raw
-                  # Extract section between first and second ## heading
-                  $match = [regex]::Match($content, '(?s)(## .*?)(?=\n## |\z)')
-                  $section = if ($match.Success) { $match.Groups[1].Value.Trim() } else { "See CHANGELOG.md" }
-                  # Save to file to avoid quoting issues
-                  $section | Out-File -FilePath release_notes.md -Encoding utf8
-
-            - name: Create GitHub Release
-              uses: softprops/action-gh-release@v2
-              with:
-                  tag_name: ${{ github.ref_name }}
-                  name: '${{ github.ref_name }}'
-                  body_path: release_notes.md
-                  files: '*.zip'
-                  draft: false
-                  prerelease: false
-
-    # Documentation check
     docs:
         name: Check Documentation
         runs-on: windows-latest
