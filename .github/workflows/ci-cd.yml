@@ -121,8 +121,13 @@ jobs:
 
             - name: Create release archive
               run: |
-                  $timestamp = Get-Date -Format "yyyy-MM-dd"
-                  $archiveName = "RaisedFloor.extension-$timestamp.zip"
+                  # Имя архива: по тегу (если push тега) или по дате (если push ветки)
+                  if ($env:GITHUB_REF -match '^refs/tags/(v.+)$') {
+                    $version = $Matches[1]
+                  } else {
+                    $version = Get-Date -Format "yyyy-MM-dd"
+                  }
+                  $archiveName = "RaisedFloor.extension-$version.zip"
                   $stageDir = Join-Path $PWD "_package"
                   if (Test-Path $stageDir) {
                     Remove-Item $stageDir -Recurse -Force
